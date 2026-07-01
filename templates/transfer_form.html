@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Transfer Money</h2>
+<form method="post" action="/transactions/transfer" class="row g-3">
+    <div class="col-md-5">
+        <label class="form-label">From Account</label>
+        <select name="from_account_id" class="form-select" required>
+            <option value="">Select Account</option>
+            {% for account in accounts %}
+            <option value="{{ account.id }}">{{ account.name }} (&#x20B9;{{ "%.2f"|format(account.balance) }})</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col-md-2 d-flex align-items-center justify-content-center">
+        <span class="fs-4">&#x2192;</span>
+    </div>
+    <div class="col-md-5">
+        <label class="form-label">To Account</label>
+        <select name="to_account_id" class="form-select" required>
+            <option value="">Select Account</option>
+            {% for account in accounts %}
+            <option value="{{ account.id }}">{{ account.name }} (&#x20B9;{{ "%.2f"|format(account.balance) }})</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col-md-4">
+        <label class="form-label">Amount (&#x20B9;)</label>
+        <input type="number" name="amount" class="form-control" step="0.01" min="0.01" required>
+    </div>
+    <div class="col-md-6">
+        <label class="form-label">Description (optional)</label>
+        <input type="text" name="description" class="form-control" placeholder="Reason for transfer">
+    </div>
+    <div class="col-12">
+        <button type="submit" class="btn btn-primary">Transfer</button>
+        <a href="/" class="btn btn-outline-secondary">Cancel</a>
+    </div>
+</form>
+{% if error %}
+<div class="alert alert-danger mt-3">{{ error }}</div>
+{% endif %}
+{% endblock %}

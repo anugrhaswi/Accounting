@@ -1,0 +1,4 @@
+accounting.db
+__pycache__/
+*.pyc
+.vscode/

@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Add Account</h2>
+<form method="post" action="/accounts/" class="row g-3">
+    <div class="col-md-6">
+        <label class="form-label">Account Name</label>
+        <input type="text" name="name" class="form-control" required placeholder="e.g. Rionet, HDFC, Paytm">
+    </div>
+    <div class="col-md-4">
+        <label class="form-label">Type</label>
+        <input type="text" name="type" class="form-control" placeholder="e.g. Bank, Wallet, Cash" value="General">
+    </div>
+    <div class="col-md-8">
+        <label class="form-label">Description (optional)</label>
+        <input type="text" name="description" class="form-control" placeholder="Any notes">
+    </div>
+    <div class="col-12">
+        <button type="submit" class="btn btn-primary">Create Account</button>
+        <a href="/" class="btn btn-outline-secondary">Cancel</a>
+    </div>
+</form>
+{% if error %}
+<div class="alert alert-danger mt-3">{{ error }}</div>
+{% endif %}
+{% endblock %}

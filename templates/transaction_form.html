@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Add Transaction</h2>
+<form method="post" action="/transactions/" class="row g-3">
+    <div class="col-md-6">
+        <label class="form-label">Account</label>
+        <select name="account_id" class="form-select" required>
+            <option value="">Select Account</option>
+            {% for account in accounts %}
+            <option value="{{ account.id }}" {% if selected_account_id == account.id %}selected{% endif %}>
+                {{ account.name }} (&#x20B9;{{ "%.2f"|format(account.balance) }})
+            </option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col-md-4">
+        <label class="form-label">Type</label>
+        <select name="type" class="form-select" required>
+            <option value="credit">Credit (Money In)</option>
+            <option value="debit">Debit (Money Out)</option>
+        </select>
+    </div>
+    <div class="col-md-4">
+        <label class="form-label">Amount (&#x20B9;)</label>
+        <input type="number" name="amount" class="form-control" step="0.01" min="0.01" required>
+    </div>
+    <div class="col-md-6">
+        <label class="form-label">Category</label>
+        <select name="category" class="form-select">
+            <option value="General" selected>General</option>
+            {% if income_categories %}
+            <optgroup label="Income">
+                {% for cat in income_categories %}
+                <option value="{{ cat.name }}">{{ cat.name }}</option>
+                {% endfor %}
+            </optgroup>
+            {% endif %}
+            {% if expense_categories %}
+            <optgroup label="Expense">
+                {% for cat in expense_categories %}
+                <option value="{{ cat.name }}">{{ cat.name }}</option>
+                {% endfor %}
+            </optgroup>
+            {% endif %}
+        </select>
+    </div>
+    <div class="col-md-6">
+        <label class="form-label">Description (optional)</label>
+        <input type="text" name="description" class="form-control" placeholder="What is this for?">
+    </div>
+    <div class="col-md-4">
+        <label class="form-label">Reference (optional)</label>
+        <input type="text" name="reference" class="form-control" placeholder="Bill/UTR/Invoice no.">
+    </div>
+    <div class="col-12">
+        <button type="submit" class="btn btn-primary">Save Transaction</button>
+        <a href="/" class="btn btn-outline-secondary">Cancel</a>
+    </div>
+</form>
+{% if error %}
+<div class="alert alert-danger mt-3">{{ error }}</div>
+{% endif %}
+{% endblock %}

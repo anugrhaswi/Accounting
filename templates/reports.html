@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Reports — P&amp;L</h2>
+
+<form method="get" action="/reports/" class="row g-3 mb-4">
+    <div class="col-auto">
+        <label class="form-label">Month</label>
+        <select name="month" class="form-select">
+            {% for m in range(1, 13) %}
+            <option value="{{ m }}" {% if m == selected_month %}selected{% endif %}>{{ month_names[m] }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col-auto">
+        <label class="form-label">Year</label>
+        <select name="year" class="form-select">
+            {% for y in years %}
+            <option value="{{ y }}" {% if y == selected_year %}selected{% endif %}>{{ y }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col-auto d-flex align-items-end">
+        <button type="submit" class="btn btn-primary">View</button>
+    </div>
+</form>
+
+<h4>{{ selected_month_name }} {{ selected_year }} — Daily Breakdown</h4>
+{% if daily %}
+<div class="table-responsive mb-4">
+    <table class="table table-striped table-sm">
+        <thead class="table-dark">
+            <tr>
+                <th>Date</th>
+                <th>Income</th>
+                <th>Expenses</th>
+                <th>Profit</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% set total_income = namespace(v=0) %}
+            {% set total_expenses = namespace(v=0) %}
+            {% for day in daily %}
+            {% set total_income.v = total_income.v + day.income %}
+            {% set total_expenses.v = total_expenses.v + day.expenses %}
+            <tr>
+                <td>{{ day.date }}</td>
+                <td>&#x20B9;{{ "%.2f"|format(day.income) }}</td>
+                <td>&#x20B9;{{ "%.2f"|format(day.expenses) }}</td>
+                <td class="{% if day.profit >= 0 %}text-success{% else %}text-danger{% endif %} fw-bold">
+                    &#x20B9;{{ "%.2f"|format(day.profit) }}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot class="table-secondary fw-bold">
+            <tr>
+                <td>Total</td>
+                <td>&#x20B9;{{ "%.2f"|format(total_income.v) }}</td>
+                <td>&#x20B9;{{ "%.2f"|format(total_expenses.v) }}</td>
+                <td class="{% if total_income.v - total_expenses.v >= 0 %}text-success{% else %}text-danger{% endif %}">
+                    &#x20B9;{{ "%.2f"|format(total_income.v - total_expenses.v) }}
+                </td>
+            </tr>
+        </tfoot>
+    </table>
+</div>
+{% else %}
+<div class="alert alert-info mb-4">No transactions in this month.</div>
+{% endif %}
+
+<h4>Monthly Overview</h4>
+{% if monthly %}
+<div class="table-responsive">
+    <table class="table table-striped table-sm">
+        <thead class="table-dark">
+            <tr>
+                <th>Month</th>
+                <th>Income</th>
+                <th>Expenses</th>
+                <th>Profit</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for m in monthly %}
+            <tr>
+                <td>{{ m.month }}</td>
+                <td>&#x20B9;{{ "%.2f"|format(m.income) }}</td>
+                <td>&#x20B9;{{ "%.2f"|format(m.expenses) }}</td>
+                <td class="{% if m.profit >= 0 %}text-success{% else %}text-danger{% endif %} fw-bold">
+                    &#x20B9;{{ "%.2f"|format(m.profit) }}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="alert alert-info">No transactions recorded yet.</div>
+{% endif %}
+{% endblock %}
