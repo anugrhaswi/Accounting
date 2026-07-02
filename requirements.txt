@@ -1,6 +1,3 @@
-fastapi
-uvicorn[standard]
+flask>=3.0
 sqlalchemy>=2.0
-aiosqlite
 jinja2
-python-multipart

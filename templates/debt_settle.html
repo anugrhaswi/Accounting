@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Settle Debt</h2>
+{% if error %}
+<div class="alert alert-danger">{{ error }}</div>
+{% endif %}
+
+<div class="card mb-4">
+    <div class="card-body">
+        <h5 class="card-title">{{ debt.creditor }}</h5>
+        <p>Amount: ₹{{ "%.2f"|format(debt.amount) }}</p>
+        <p>Category: {{ debt.category or "General" }}</p>
+        {% if debt.description %}
+        <p>Description: {{ debt.description }}</p>
+        {% endif %}
+    </div>
+</div>
+
+<form method="POST" action="/debts/{{ debt.id }}/settle">
+    <div class="mb-3">
+        <label class="form-label">Pay from Account</label>
+        <select name="account_id" class="form-select" required>
+            <option value="">Select account...</option>
+            {% for account in accounts %}
+            <option value="{{ account.id }}">{{ account.name }} (₹{{ "%.2f"|format(account.balance) }})</option>
+            {% endfor %}
+        </select>
+    </div>
+    <button type="submit" class="btn btn-success">Confirm Payment</button>
+    <a href="/debts/" class="btn btn-secondary">Cancel</a>
+</form>
+{% endblock %}

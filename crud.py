@@ -1,58 +1,58 @@
 from datetime import datetime, timezone, timedelta
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
-from fastapi import HTTPException
 import models
 import schemas
+from schemas import asdict
 
 
-async def get_accounts(db: AsyncSession):
-    result = await db.execute(select(models.Account).order_by(models.Account.name))
+def get_accounts(db: Session):
+    result = db.execute(select(models.Account).order_by(models.Account.name))
     return result.scalars().all()
 
 
-async def get_account(db: AsyncSession, account_id: int):
-    account = await db.get(models.Account, account_id)
+def get_account(db: Session, account_id: int):
+    account = db.get(models.Account, account_id)
     if not account:
-        raise HTTPException(status_code=404, detail="Account not found")
+        raise ValueError("Account not found")
     return account
 
 
-async def create_account(db: AsyncSession, data: schemas.AccountCreate):
-    account = models.Account(**data.model_dump())
+def create_account(db: Session, data: schemas.AccountCreate):
+    account = models.Account(**asdict(data))
     db.add(account)
-    await db.flush()
-    await db.refresh(account)
+    db.flush()
+    db.refresh(account)
     return account
 
 
-async def delete_account(db: AsyncSession, account_id: int):
-    account = await get_account(db, account_id)
-    result = await db.execute(
+def delete_account(db: Session, account_id: int):
+    account = get_account(db, account_id)
+    result = db.execute(
         select(models.Transaction).where(models.Transaction.account_id == account_id).limit(1)
     )
     if result.first():
-        raise HTTPException(status_code=400, detail="Cannot delete account with existing transactions")
-    await db.delete(account)
-    await db.flush()
+        raise ValueError("Cannot delete account with existing transactions")
+    db.delete(account)
+    db.flush()
 
 
-async def get_total_balance(db: AsyncSession):
-    result = await db.execute(select(func.coalesce(func.sum(models.Account.balance), 0)))
+def get_total_balance(db: Session):
+    result = db.execute(select(func.coalesce(func.sum(models.Account.balance), 0)))
     return result.scalar()
 
 
-async def get_setting(db: AsyncSession, key: str, default: str = None):
-    result = await db.execute(
+def get_setting(db: Session, key: str, default: str = None):
+    result = db.execute(
         select(models.Setting).where(models.Setting.key == key)
     )
     setting = result.scalar_one_or_none()
     return setting.value if setting else default
 
 
-async def set_setting(db: AsyncSession, key: str, value: str):
-    result = await db.execute(
+def set_setting(db: Session, key: str, value: str):
+    result = db.execute(
         select(models.Setting).where(models.Setting.key == key)
     )
     setting = result.scalar_one_or_none()
@@ -60,10 +60,10 @@ async def set_setting(db: AsyncSession, key: str, value: str):
         setting.value = value
     else:
         db.add(models.Setting(key=key, value=value))
-    await db.flush()
+    db.flush()
 
 
-async def get_transactions(db: AsyncSession, account_id: int = None, txn_type: str = None, skip: int = 0, limit: int = 100):
+def get_transactions(db: Session, account_id: int = None, txn_type: str = None, skip: int = 0, limit: int = 100):
     query = (
         select(models.Transaction)
         .options(selectinload(models.Transaction.account))
@@ -73,34 +73,106 @@ async def get_transactions(db: AsyncSession, account_id: int = None, txn_type: s
         query = query.where(models.Transaction.account_id == account_id)
     if txn_type:
         query = query.where(models.Transaction.type == txn_type)
-    result = await db.execute(query.offset(skip).limit(limit))
+    result = db.execute(query.offset(skip).limit(limit))
     return result.scalars().all()
 
 
-async def create_transaction(db: AsyncSession, data: schemas.TransactionCreate):
-    account = await get_account(db, data.account_id)
+def create_transaction(db: Session, data: schemas.TransactionCreate):
+    account = get_account(db, data.account_id)
     if data.type == "debit" and account.balance < data.amount:
-        raise HTTPException(status_code=400, detail="Insufficient balance")
-    transaction = models.Transaction(**data.model_dump())
+        raise ValueError("Insufficient balance")
+    transaction = models.Transaction(**asdict(data))
     if data.type == "credit":
         account.balance += data.amount
     else:
         account.balance -= data.amount
     db.add(transaction)
-    await db.flush()
-    await db.refresh(transaction)
+    db.flush()
+    db.refresh(transaction)
     return transaction
 
 
-async def transfer_money(db: AsyncSession, data: schemas.TransferCreate):
-    if data.from_account_id == data.to_account_id:
-        raise HTTPException(status_code=400, detail="Cannot transfer to the same account")
+def get_transaction(db: Session, transaction_id: int):
+    txn = db.get(models.Transaction, transaction_id)
+    if not txn:
+        raise ValueError("Transaction not found")
+    return txn
 
-    from_account = await get_account(db, data.from_account_id)
-    to_account = await get_account(db, data.to_account_id)
+
+def delete_transaction(db: Session, transaction_id: int):
+    txn = get_transaction(db, transaction_id)
+    account = txn.account
+
+    if txn.category == "Transfer":
+        pair_type = "credit" if txn.type == "debit" else "debit"
+        pair_txn = db.execute(
+            select(models.Transaction).where(
+                models.Transaction.type == pair_type,
+                models.Transaction.amount == txn.amount,
+                models.Transaction.category == "Transfer",
+                models.Transaction.id != txn.id,
+            ).order_by(models.Transaction.timestamp.desc()).limit(1)
+        ).scalar_one_or_none()
+
+        if pair_txn:
+            pair_account = pair_txn.account
+            if pair_txn.type == "credit":
+                pair_account.balance -= pair_txn.amount
+            else:
+                pair_account.balance += pair_txn.amount
+            db.delete(pair_txn)
+
+        if txn.type == "debit":
+            account.balance += txn.amount
+        else:
+            account.balance -= txn.amount
+
+        db.delete(txn)
+        db.flush()
+        return
+
+    if txn.type == "credit":
+        if account.balance < txn.amount:
+            raise ValueError("Cannot undo: insufficient balance to reverse credit")
+        account.balance -= txn.amount
+    else:
+        account.balance += txn.amount
+
+    if txn.reference and txn.reference.startswith("debt:"):
+        try:
+            debt_id = int(txn.reference.split(":", 1)[1])
+            debt = db.get(models.Debt, debt_id)
+            if debt and debt.status == "paid":
+                debt.status = "unpaid"
+                debt.settled_at = None
+        except (ValueError, TypeError):
+            pass
+    elif txn.description and txn.description.startswith("Payment for "):
+        creditor = txn.description[len("Payment for "):]
+        debt = db.execute(
+            select(models.Debt).where(
+                models.Debt.status == "paid",
+                models.Debt.creditor == creditor,
+                models.Debt.amount == txn.amount,
+            ).limit(1)
+        ).scalar_one_or_none()
+        if debt:
+            debt.status = "unpaid"
+            debt.settled_at = None
+
+    db.delete(txn)
+    db.flush()
+
+
+def transfer_money(db: Session, data: schemas.TransferCreate):
+    if data.from_account_id == data.to_account_id:
+        raise ValueError("Cannot transfer to the same account")
+
+    from_account = get_account(db, data.from_account_id)
+    to_account = get_account(db, data.to_account_id)
 
     if from_account.balance < data.amount:
-        raise HTTPException(status_code=400, detail="Insufficient balance")
+        raise ValueError("Insufficient balance")
 
     debit_txn = models.Transaction(
         account_id=data.from_account_id,
@@ -122,34 +194,34 @@ async def transfer_money(db: AsyncSession, data: schemas.TransferCreate):
 
     db.add(debit_txn)
     db.add(credit_txn)
-    await db.flush()
-    await db.refresh(debit_txn)
-    await db.refresh(credit_txn)
+    db.flush()
+    db.refresh(debit_txn)
+    db.refresh(credit_txn)
     return debit_txn, credit_txn
 
 
-async def get_categories(db: AsyncSession, cat_type: str = None):
+def get_categories(db: Session, cat_type: str = None):
     query = select(models.Category).order_by(models.Category.sort_order, models.Category.name)
     if cat_type:
         query = query.where(models.Category.type == cat_type)
-    result = await db.execute(query)
+    result = db.execute(query)
     return result.scalars().all()
 
 
-async def create_category(db: AsyncSession, data: schemas.CategoryCreate):
-    category = models.Category(**data.model_dump())
+def create_category(db: Session, data: schemas.CategoryCreate):
+    category = models.Category(**asdict(data))
     db.add(category)
-    await db.flush()
-    await db.refresh(category)
+    db.flush()
+    db.refresh(category)
     return category
 
 
-async def delete_category(db: AsyncSession, category_id: int):
-    category = await db.get(models.Category, category_id)
+def delete_category(db: Session, category_id: int):
+    category = db.get(models.Category, category_id)
     if not category:
-        raise HTTPException(status_code=404, detail="Category not found")
-    await db.delete(category)
-    await db.flush()
+        raise ValueError("Category not found")
+    db.delete(category)
+    db.flush()
 
 
 DEFAULT_CATEGORIES = [
@@ -168,22 +240,22 @@ DEFAULT_CATEGORIES = [
 ]
 
 
-async def seed_default_categories(db: AsyncSession):
-    result = await db.execute(select(models.Category).limit(1))
+def seed_default_categories(db: Session):
+    result = db.execute(select(models.Category).limit(1))
     if result.first():
         return
     for cat in DEFAULT_CATEGORIES:
         db.add(models.Category(**cat))
-    await db.flush()
+    db.flush()
 
 
-async def get_daily_summary(db: AsyncSession, date: datetime = None):
+def get_daily_summary(db: Session, date: datetime = None):
     if date is None:
         date = datetime.now(timezone.utc)
     day_start = date.replace(hour=0, minute=0, second=0, microsecond=0)
     day_end = day_start + timedelta(days=1)
 
-    income = await db.execute(
+    income = db.execute(
         select(func.coalesce(func.sum(models.Transaction.amount), 0))
         .where(models.Transaction.timestamp >= day_start)
         .where(models.Transaction.timestamp < day_end)
@@ -191,7 +263,7 @@ async def get_daily_summary(db: AsyncSession, date: datetime = None):
     )
     total_income = income.scalar()
 
-    expenses = await db.execute(
+    expenses = db.execute(
         select(func.coalesce(func.sum(models.Transaction.amount), 0))
         .where(models.Transaction.timestamp >= day_start)
         .where(models.Transaction.timestamp < day_end)
@@ -199,7 +271,7 @@ async def get_daily_summary(db: AsyncSession, date: datetime = None):
     )
     total_expenses = expenses.scalar()
 
-    income_by_cat = await db.execute(
+    income_by_cat = db.execute(
         select(models.Transaction.category, func.sum(models.Transaction.amount))
         .where(models.Transaction.timestamp >= day_start)
         .where(models.Transaction.timestamp < day_end)
@@ -207,7 +279,7 @@ async def get_daily_summary(db: AsyncSession, date: datetime = None):
         .group_by(models.Transaction.category)
     )
 
-    expense_by_cat = await db.execute(
+    expense_by_cat = db.execute(
         select(models.Transaction.category, func.sum(models.Transaction.amount))
         .where(models.Transaction.timestamp >= day_start)
         .where(models.Transaction.timestamp < day_end)
@@ -224,14 +296,14 @@ async def get_daily_summary(db: AsyncSession, date: datetime = None):
     }
 
 
-async def get_monthly_days(db: AsyncSession, year: int, month: int):
+def get_monthly_days(db: Session, year: int, month: int):
     month_start = datetime(year, month, 1, tzinfo=timezone.utc)
     if month == 12:
         next_month = datetime(year + 1, 1, 1, tzinfo=timezone.utc)
     else:
         next_month = datetime(year, month + 1, 1, tzinfo=timezone.utc)
 
-    rows = await db.execute(
+    rows = db.execute(
         select(
             func.date(models.Transaction.timestamp).label("day"),
             models.Transaction.type,
@@ -259,8 +331,8 @@ async def get_monthly_days(db: AsyncSession, year: int, month: int):
     ]
 
 
-async def get_monthly_overview(db: AsyncSession):
-    rows = await db.execute(
+def get_monthly_overview(db: Session):
+    rows = db.execute(
         select(
             func.strftime("%Y-%m", models.Transaction.timestamp).label("month"),
             models.Transaction.type,
@@ -284,3 +356,76 @@ async def get_monthly_overview(db: AsyncSession):
         {"month": m, "income": v["income"], "expenses": v["expenses"], "profit": v["income"] - v["expenses"]}
         for m, v in sorted(monthly.items(), reverse=True)
     ]
+
+
+def get_debts(db: Session, status: str = None):
+    query = select(models.Debt).order_by(models.Debt.created_at.desc())
+    if status:
+        query = query.where(models.Debt.status == status)
+    result = db.execute(query)
+    return result.scalars().all()
+
+
+def get_debt(db: Session, debt_id: int):
+    debt = db.get(models.Debt, debt_id)
+    if not debt:
+        raise ValueError("Debt not found")
+    return debt
+
+
+def create_debt(db: Session, data: schemas.DebtCreate):
+    due = None
+    if data.due_date:
+        try:
+            due = datetime.fromisoformat(data.due_date)
+            if due.tzinfo is None:
+                due = due.replace(tzinfo=timezone.utc)
+        except (ValueError, TypeError):
+            pass
+    debt = models.Debt(
+        creditor=data.creditor,
+        amount=data.amount,
+        category=data.category,
+        description=data.description,
+        due_date=due,
+        status="unpaid",
+    )
+    db.add(debt)
+    db.flush()
+    db.refresh(debt)
+    return debt
+
+
+def settle_debt(db: Session, debt_id: int, account_id: int):
+    debt = get_debt(db, debt_id)
+    if debt.status == "paid":
+        raise ValueError("Debt is already settled")
+
+    account = get_account(db, account_id)
+    if account.balance < debt.amount:
+        raise ValueError("Insufficient balance")
+
+    transaction = models.Transaction(
+        account_id=account_id,
+        type="debit",
+        amount=debt.amount,
+        category=debt.category or "General",
+        description=debt.description or f"Payment for {debt.creditor}",
+        reference=f"debt:{debt.id}",
+    )
+    account.balance -= debt.amount
+    debt.status = "paid"
+    debt.settled_at = datetime.now(timezone.utc)
+
+    db.add(transaction)
+    db.flush()
+    db.refresh(transaction)
+    return debt, transaction
+
+
+def get_total_outstanding_debt(db: Session):
+    result = db.execute(
+        select(func.coalesce(func.sum(models.Debt.amount), 0))
+        .where(models.Debt.status == "unpaid")
+    )
+    return result.scalar()

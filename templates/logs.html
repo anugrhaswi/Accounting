@@ -39,6 +39,7 @@
                 <th>Amount</th>
                 <th>Description</th>
                 <th>Reference</th>
+                <th>Action</th>
             </tr>
         </thead>
         <tbody>
@@ -56,6 +57,11 @@
                 <td>&#x20B9;{{ "%.2f"|format(txn.amount) }}</td>
                 <td>{{ txn.description or "-" }}</td>
                 <td>{{ txn.reference or "-" }}</td>
+                <td>
+                    <form action="/transactions/{{ txn.id }}/delete" method="post" style="display:inline" onsubmit="return confirm('Undo this transaction? This will reverse the balance change.')">
+                        <button type="submit" class="btn btn-sm btn-outline-danger">Undo</button>
+                    </form>
+                </td>
             </tr>
             {% endfor %}
         </tbody>

@@ -46,6 +46,20 @@ class Category(Base):
     sort_order = Column(Integer, default=0)
 
 
+class Debt(Base):
+    __tablename__ = "debts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    creditor = Column(String(200), nullable=False)
+    amount = Column(Float, nullable=False)
+    category = Column(String(50), nullable=True)
+    description = Column(Text, nullable=True)
+    due_date = Column(DateTime(timezone=True), nullable=True)
+    status = Column(String(10), nullable=False, default="unpaid")
+    created_at = Column(DateTime(timezone=True), default=_now)
+    settled_at = Column(DateTime(timezone=True), nullable=True)
+
+
 class Setting(Base):
     __tablename__ = "settings"
 

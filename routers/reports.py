@@ -1,37 +1,26 @@
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, Request
-from sqlalchemy.ext.asyncio import AsyncSession
+from flask import Blueprint, render_template, request
 from database import get_db
-from templating import templates
 import crud
 
-router = APIRouter(prefix="/reports", tags=["reports"])
+bp = Blueprint("reports", __name__, url_prefix="/reports")
 
 
-@router.get("/")
-async def reports_page(
-    request: Request,
-    year: int = None,
-    month: int = None,
-    db: AsyncSession = Depends(get_db),
-):
+@bp.route("/")
+def reports_page():
+    db = get_db()
     now = datetime.now(timezone.utc)
-    year = year or now.year
-    month = month or now.month
 
-    monthly_overview = await crud.get_monthly_overview(db)
-    daily = await crud.get_monthly_days(db, year, month)
+    year_arg = request.args.get("year")
+    year = int(year_arg) if year_arg else now.year
+    month_arg = request.args.get("month")
+    month = int(month_arg) if month_arg else now.month
+
+    monthly_overview = crud.get_monthly_overview(db)
+    daily = crud.get_monthly_days(db, year, month)
 
     month_names = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun",
                    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
     years = list(range(now.year - 5, now.year + 1))
 
-    return templates.TemplateResponse(request, "reports.html", {
-        "daily": daily,
-        "monthly": monthly_overview,
-        "selected_year": year,
-        "selected_month": month,
-        "selected_month_name": month_names[month],
-        "years": years,
-        "month_names": month_names,
-    })
+    return render_template("reports.html", daily=daily, monthly=monthly_overview, selected_year=year, selected_month=month, selected_month_name=month_names[month], years=years, month_names=month_names)

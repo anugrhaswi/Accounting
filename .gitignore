@@ -2,3 +2,4 @@ accounting.db
 __pycache__/
 *.pyc
 .vscode/
+AGENTS.md

@@ -1,53 +1,44 @@
 from urllib.parse import quote
 
-from typing import Optional
-
-from fastapi import APIRouter, Depends, HTTPException, Request, Query
-from sqlalchemy.ext.asyncio import AsyncSession
-from fastapi.responses import RedirectResponse
+from flask import Blueprint, redirect, render_template, request
 from database import get_db
-from templating import templates
 import crud
 import schemas
 
-router = APIRouter(prefix="/categories", tags=["categories"])
+bp = Blueprint("categories", __name__, url_prefix="/categories")
 
 
-@router.get("/")
-async def list_categories(request: Request, db: AsyncSession = Depends(get_db), error: Optional[str] = Query(default=None)):
-    income_categories = await crud.get_categories(db, cat_type="income")
-    expense_categories = await crud.get_categories(db, cat_type="expense")
-    return templates.TemplateResponse(request, "categories.html", {
-        "income_categories": income_categories,
-        "expense_categories": expense_categories,
-        "error": error,
-    })
+@bp.route("/")
+def list_categories():
+    db = get_db()
+    error = request.args.get("error")
+    income_categories = crud.get_categories(db, cat_type="income")
+    expense_categories = crud.get_categories(db, cat_type="expense")
+    return render_template("categories.html", income_categories=income_categories, expense_categories=expense_categories, error=error)
 
 
-@router.post("/")
-async def create_category(request: Request, db: AsyncSession = Depends(get_db)):
-    form = await request.form()
+@bp.route("/", methods=["POST"])
+def create_category():
+    db = get_db()
+    form = request.form
     try:
         data = schemas.CategoryCreate(
             name=form["name"],
             type=form["type"],
         )
-        await crud.create_category(db, data)
+        crud.create_category(db, data)
     except Exception:
-        income_categories = await crud.get_categories(db, cat_type="income")
-        expense_categories = await crud.get_categories(db, cat_type="expense")
-        return templates.TemplateResponse(request, "categories.html", {
-            "income_categories": income_categories,
-            "expense_categories": expense_categories,
-            "error": "A category with this name already exists.",
-        }, status_code=400)
-    return RedirectResponse(url="/categories/", status_code=303)
+        income_categories = crud.get_categories(db, cat_type="income")
+        expense_categories = crud.get_categories(db, cat_type="expense")
+        return render_template("categories.html", income_categories=income_categories, expense_categories=expense_categories, error="A category with this name already exists."), 400
+    return redirect("/categories/", 303)
 
 
-@router.post("/{category_id}/delete")
-async def delete_category(category_id: int, db: AsyncSession = Depends(get_db)):
+@bp.route("/<int:category_id>/delete", methods=["POST"])
+def delete_category(category_id):
+    db = get_db()
     try:
-        await crud.delete_category(db, category_id)
-    except HTTPException as e:
-        return RedirectResponse(url=f"/categories/?error={quote(str(e.detail))}", status_code=303)
-    return RedirectResponse(url="/categories/", status_code=303)
+        crud.delete_category(db, category_id)
+    except ValueError as e:
+        return redirect(f"/categories/?error={quote(str(e))}", 303)
+    return redirect("/categories/", 303)
