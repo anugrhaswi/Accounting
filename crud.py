@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime, timezone, timedelta
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func
@@ -48,7 +49,7 @@ def get_setting(db: Session, key: str, default: str = None):
         select(models.Setting).where(models.Setting.key == key)
     )
     setting = result.scalar_one_or_none()
-    return setting.value if setting else default
+    return setting.value if setting and setting.value is not None else default
 
 
 def set_setting(db: Session, key: str, value: str):
@@ -103,20 +104,21 @@ def delete_transaction(db: Session, transaction_id: int):
     txn = get_transaction(db, transaction_id)
     account = txn.account
 
-    if txn.category == "Transfer":
+    if txn.category == "Transfer" and txn.reference and txn.reference.startswith("xfer:"):
         pair_type = "credit" if txn.type == "debit" else "debit"
         pair_txn = db.execute(
             select(models.Transaction).where(
+                models.Transaction.reference == txn.reference,
                 models.Transaction.type == pair_type,
-                models.Transaction.amount == txn.amount,
-                models.Transaction.category == "Transfer",
                 models.Transaction.id != txn.id,
-            ).order_by(models.Transaction.timestamp.desc()).limit(1)
+            ).limit(1)
         ).scalar_one_or_none()
 
         if pair_txn:
             pair_account = pair_txn.account
             if pair_txn.type == "credit":
+                if pair_account.balance < pair_txn.amount:
+                    raise ValueError("Cannot undo: pair account has insufficient balance")
                 pair_account.balance -= pair_txn.amount
             else:
                 pair_account.balance += pair_txn.amount
@@ -125,6 +127,8 @@ def delete_transaction(db: Session, transaction_id: int):
         if txn.type == "debit":
             account.balance += txn.amount
         else:
+            if account.balance < txn.amount:
+                raise ValueError("Cannot undo: insufficient balance to reverse credit")
             account.balance -= txn.amount
 
         db.delete(txn)
@@ -147,18 +151,6 @@ def delete_transaction(db: Session, transaction_id: int):
                 debt.settled_at = None
         except (ValueError, TypeError):
             pass
-    elif txn.description and txn.description.startswith("Payment for "):
-        creditor = txn.description[len("Payment for "):]
-        debt = db.execute(
-            select(models.Debt).where(
-                models.Debt.status == "paid",
-                models.Debt.creditor == creditor,
-                models.Debt.amount == txn.amount,
-            ).limit(1)
-        ).scalar_one_or_none()
-        if debt:
-            debt.status = "unpaid"
-            debt.settled_at = None
 
     db.delete(txn)
     db.flush()
@@ -174,12 +166,15 @@ def transfer_money(db: Session, data: schemas.TransferCreate):
     if from_account.balance < data.amount:
         raise ValueError("Insufficient balance")
 
+    transfer_ref = f"xfer:{uuid.uuid4().hex[:12]}"
+
     debit_txn = models.Transaction(
         account_id=data.from_account_id,
         type="debit",
         amount=data.amount,
         category="Transfer",
         description=data.description or f"Transfer to {to_account.name}",
+        reference=transfer_ref,
     )
     from_account.balance -= data.amount
 
@@ -189,6 +184,7 @@ def transfer_money(db: Session, data: schemas.TransferCreate):
         amount=data.amount,
         category="Transfer",
         description=data.description or f"Transfer from {from_account.name}",
+        reference=transfer_ref,
     )
     to_account.balance += data.amount
 
@@ -220,6 +216,11 @@ def delete_category(db: Session, category_id: int):
     category = db.get(models.Category, category_id)
     if not category:
         raise ValueError("Category not found")
+    result = db.execute(
+        select(models.Transaction).where(models.Transaction.category == category.name).limit(1)
+    )
+    if result.first():
+        raise ValueError("Cannot delete category with existing transactions")
     db.delete(category)
     db.flush()
 
@@ -260,6 +261,7 @@ def get_daily_summary(db: Session, date: datetime = None):
         .where(models.Transaction.timestamp >= day_start)
         .where(models.Transaction.timestamp < day_end)
         .where(models.Transaction.type == "credit")
+        .where(models.Transaction.category != "Transfer")
     )
     total_income = income.scalar()
 
@@ -268,6 +270,7 @@ def get_daily_summary(db: Session, date: datetime = None):
         .where(models.Transaction.timestamp >= day_start)
         .where(models.Transaction.timestamp < day_end)
         .where(models.Transaction.type == "debit")
+        .where(models.Transaction.category != "Transfer")
     )
     total_expenses = expenses.scalar()
 
@@ -276,6 +279,7 @@ def get_daily_summary(db: Session, date: datetime = None):
         .where(models.Transaction.timestamp >= day_start)
         .where(models.Transaction.timestamp < day_end)
         .where(models.Transaction.type == "credit")
+        .where(models.Transaction.category != "Transfer")
         .group_by(models.Transaction.category)
     )
 
@@ -284,6 +288,7 @@ def get_daily_summary(db: Session, date: datetime = None):
         .where(models.Transaction.timestamp >= day_start)
         .where(models.Transaction.timestamp < day_end)
         .where(models.Transaction.type == "debit")
+        .where(models.Transaction.category != "Transfer")
         .group_by(models.Transaction.category)
     )
 
@@ -311,6 +316,7 @@ def get_monthly_days(db: Session, year: int, month: int):
         )
         .where(models.Transaction.timestamp >= month_start)
         .where(models.Transaction.timestamp < next_month)
+        .where(models.Transaction.category != "Transfer")
         .group_by(func.date(models.Transaction.timestamp), models.Transaction.type)
         .order_by(func.date(models.Transaction.timestamp))
     )
@@ -338,6 +344,7 @@ def get_monthly_overview(db: Session):
             models.Transaction.type,
             func.sum(models.Transaction.amount).label("total"),
         )
+        .where(models.Transaction.category != "Transfer")
         .group_by(func.strftime("%Y-%m", models.Transaction.timestamp), models.Transaction.type)
         .order_by(func.strftime("%Y-%m", models.Transaction.timestamp).desc())
     )

@@ -56,15 +56,15 @@ def transfer_form():
 def transfer_money():
     db = get_db()
     form = request.form
-    data = schemas.TransferCreate(
-        from_account_id=int(form["from_account_id"]),
-        to_account_id=int(form["to_account_id"]),
-        amount=float(form["amount"]),
-        description=form.get("description") or None,
-    )
     try:
+        data = schemas.TransferCreate(
+            from_account_id=int(form["from_account_id"]),
+            to_account_id=int(form["to_account_id"]),
+            amount=float(form["amount"]),
+            description=form.get("description") or None,
+        )
         crud.transfer_money(db, data)
-    except ValueError as e:
+    except (ValueError, KeyError) as e:
         accounts = crud.get_accounts(db)
         return render_template("transfer_form.html", accounts=accounts, error=str(e)), 400
     return redirect("/", 303)
@@ -77,5 +77,4 @@ def delete_transaction(transaction_id):
         crud.delete_transaction(db, transaction_id)
     except ValueError as e:
         return redirect(f"/logs?error={quote(str(e))}", 303)
-    referrer = request.headers.get("Referer", "/logs")
-    return redirect(referrer, 303)
+    return redirect("/logs", 303)

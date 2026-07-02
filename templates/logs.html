@@ -2,6 +2,10 @@
 {% block content %}
 <h2>Transaction Logs</h2>
 
+{% if error %}
+<div class="alert alert-danger">{{ error }}</div>
+{% endif %}
+
 <form method="get" action="/logs" class="row g-3 mb-4">
     <div class="col-md-4">
         <label class="form-label">Account</label>

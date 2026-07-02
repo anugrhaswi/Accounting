@@ -1,10 +1,31 @@
-from datetime import datetime, timezone
+import os
+import shutil
+from datetime import date, datetime, timezone
 
-from flask import Flask, g, redirect, render_template, request
+from flask import Flask, g, redirect, render_template, request, send_file
 from sqlalchemy import text
 
-from database import engine, Base, SessionLocal, get_db
+from database import engine, Base, SessionLocal, get_db, DB_PATH
 import crud
+
+BACKUP_DIR = os.path.join(os.path.expanduser("~"), "backups")
+BAK_PATH = DB_PATH + ".bak"
+
+
+def restore_db():
+    if not os.path.exists(DB_PATH) and os.path.exists(BAK_PATH):
+        shutil.copy2(BAK_PATH, DB_PATH)
+
+
+def backup_db():
+    if os.path.exists(DB_PATH):
+        os.makedirs(BACKUP_DIR, exist_ok=True)
+        dated = os.path.join(BACKUP_DIR, f"accounting_{date.today()}.db")
+        shutil.copy2(DB_PATH, dated)
+        shutil.copy2(DB_PATH, BAK_PATH)
+        backups = sorted(f for f in os.listdir(BACKUP_DIR) if f.startswith("accounting_"))
+        for old in backups[:-3]:
+            os.remove(os.path.join(BACKUP_DIR, old))
 
 
 def create_tables():
@@ -22,7 +43,9 @@ def seed_data():
         session.commit()
 
 
+restore_db()
 create_tables()
+backup_db()
 seed_data()
 
 app = Flask(__name__)
@@ -44,11 +67,13 @@ app.register_blueprint(debts_bp)
 def close_db(exception=None):
     db = g.pop("db", None)
     if db is not None:
-        if exception is None:
-            db.commit()
-        else:
-            db.rollback()
-        db.close()
+        try:
+            if exception is None:
+                db.commit()
+            else:
+                db.rollback()
+        finally:
+            db.close()
 
 
 @app.route("/")
@@ -83,12 +108,21 @@ def update_capital():
 @app.route("/logs")
 def view_logs():
     db = get_db()
+    error = request.args.get("error")
     account_id_arg = request.args.get("account_id")
-    account_id = int(account_id_arg) if account_id_arg else None
+    try:
+        account_id = int(account_id_arg) if account_id_arg else None
+    except (ValueError, TypeError):
+        account_id = None
     txn_type = request.args.get("type")
     accounts = crud.get_accounts(db)
     transactions_list = crud.get_transactions(db, account_id=account_id, txn_type=txn_type, limit=200)
-    return render_template("logs.html", accounts=accounts, transactions=transactions_list, selected_account_id=account_id, selected_type=txn_type)
+    return render_template("logs.html", accounts=accounts, transactions=transactions_list, selected_account_id=account_id, selected_type=txn_type, error=error)
+
+
+@app.route("/backup")
+def download_backup():
+    return send_file(DB_PATH, as_attachment=True, download_name="accounting_backup.db")
 
 
 if __name__ == "__main__":

@@ -12,9 +12,17 @@ def reports_page():
     now = datetime.now(timezone.utc)
 
     year_arg = request.args.get("year")
-    year = int(year_arg) if year_arg else now.year
     month_arg = request.args.get("month")
-    month = int(month_arg) if month_arg else now.month
+    try:
+        year = int(year_arg) if year_arg else now.year
+    except (ValueError, TypeError):
+        year = now.year
+    try:
+        month = int(month_arg) if month_arg else now.month
+    except (ValueError, TypeError):
+        month = now.month
+    if month < 1 or month > 12:
+        month = now.month
 
     monthly_overview = crud.get_monthly_overview(db)
     daily = crud.get_monthly_days(db, year, month)

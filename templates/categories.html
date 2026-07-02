@@ -35,7 +35,7 @@
                 {% for cat in income_categories %}
                 <li class="list-group-item d-flex justify-content-between align-items-center">
                     {{ cat.name }}
-                    <form action="/categories/{{ cat.id }}/delete" method="post" style="display:inline" onsubmit="return confirm('Delete category &quot;{{ cat.name }}&quot;? Existing transactions keep their category.')">
+                    <form action="/categories/{{ cat.id }}/delete" method="post" style="display:inline" onsubmit="return confirm('Delete category ' + {{ cat.name|tojson }} + '? Existing transactions keep their category.')">
                         <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
                     </form>
                 </li>
@@ -52,7 +52,7 @@
                 {% for cat in expense_categories %}
                 <li class="list-group-item d-flex justify-content-between align-items-center">
                     {{ cat.name }}
-                    <form action="/categories/{{ cat.id }}/delete" method="post" style="display:inline" onsubmit="return confirm('Delete category &quot;{{ cat.name }}&quot;? Existing transactions keep their category.')">
+                    <form action="/categories/{{ cat.id }}/delete" method="post" style="display:inline" onsubmit="return confirm('Delete category ' + {{ cat.name|tojson }} + '? Existing transactions keep their category.')">
                         <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
                     </form>
                 </li>

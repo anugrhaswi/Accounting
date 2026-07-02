@@ -42,6 +42,8 @@ def settle_debt_form(debt_id):
         debt = crud.get_debt(db, debt_id)
     except ValueError:
         return redirect("/debts/", 303)
+    if debt.status == "paid":
+        return redirect("/debts/", 303)
     accounts = crud.get_accounts(db)
     return render_template("debt_settle.html", debt=debt, accounts=accounts)
 
@@ -49,10 +51,10 @@ def settle_debt_form(debt_id):
 @bp.route("/<int:debt_id>/settle", methods=["POST"])
 def settle_debt(debt_id):
     db = get_db()
-    account_id = int(request.form["account_id"])
     try:
+        account_id = int(request.form["account_id"])
         crud.settle_debt(db, debt_id, account_id)
-    except ValueError as e:
+    except (ValueError, KeyError) as e:
         debt = crud.get_debt(db, debt_id)
         accounts = crud.get_accounts(db)
         return render_template("debt_settle.html", debt=debt, accounts=accounts, error=str(e)), 400
