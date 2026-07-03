@@ -1,0 +1,90 @@
+# Audit Report — CSC Shop Accounting
+
+## 🔴 Critical — Data Integrity
+
+### 1. Deleting loan txn leaves debt stuck in wrong state
+**File:** `crud.py:150-158`
+
+`delete_transaction` only reverts debt status when deleting a `repayment` txn. If you:
+1. Create debt → Receive loan (type=loan) → Settle (type=repayment, debt→paid)
+2. Delete the **loan** txn first → balance reverses, but debt stays `paid`
+3. Now debt says `paid` but the loan is gone — inconsistent state
+
+Same issue for receivables at `crud.py:160-168` — only checks `type == "credit"` when reverting.
+
+### 2. Cannot edit debt/receivable-linked transactions
+**File:** `crud.py:699-701`
+
+`update_transaction` blocks any reference starting with `debt:`, `receivable:`, or `xfer:` as "Invalid reference format". But the edit form submits the existing reference (e.g. `debt:123`), so editing ANY debt repayment or receivable-received transaction always fails with a ValueError. The Edit button is shown for these (since they're not transfers) but the route always rejects them.
+
+---
+
+## 🟠 High — Functionality Broken
+
+### 3. `backfill_daily_profit_logs` — potential `TypeError` on `strptime`
+**File:** `crud.py:417`
+
+```python
+first_txn = db.execute(
+    select(func.date(func.min(models.Transaction.timestamp)))
+).scalar()
+...
+cursor = datetime.strptime(first_txn, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+```
+
+`func.date()` with SQLAlchemy+SQLite may return a Python `date` object (not a string), causing `strptime` to fail with `TypeError`. The `last_log` path (line 407) uses `datetime.combine()` correctly, but the `first_txn` path doesn't handle non-string types.
+
+---
+
+## 🟡 Medium — Incorrect Behavior
+
+### 4. P&L inflated by loan/repayment transactions
+**Files:** `crud.py:274-308`, `crud.py:323-337`, `crud.py:441-467`, `crud.py:471-495`
+
+All 4 profit/summary queries filter income by `type.in_(["credit", "loan"])` and expenses by `type.in_(["debit", "repayment"])`. This means:
+- Receiving a loan → shows as income
+- Repaying a loan → shows as expense
+- While net profit impact is zero, income/expense totals are inflated, making the P&L misleading
+
+The only exclusion is `category != "Transfer"` — but loan/repayment transactions have their own categories (e.g. "General"), so they pass through.
+
+### 5. `update_debt` — amount remains mutable on unpaid debts after receive
+**File:** `crud.py:752-776`
+
+For unpaid debts, you can change the `amount` even after the loan has been received (the linked transaction retains the old amount). This creates a mismatch between the debt record and its associated transaction. Arguably amount should be locked once a loan is received.
+
+### 6. No `received_at` on Debt model — unlike Receivable
+**File:** `models.py:49-61`
+
+`Debt` has no `received_at` column, so when a loan is received (`receive_loan`), there's no record of when it happened. The `Receivable` model correctly has `received_at`. Inconsistent.
+
+---
+
+## 🔵 Low — Edge Cases & UX
+
+### 7. Silent exception swallowing
+**Files:** `crud.py:125`, `crud.py:192-193`, `routers/transactions.py:59,93,174,186-187`, `routers/debts.py:57-58,133-134,179-180,191-192`, `routers/receivables.py:63-64,104-105,150-151,162-163`
+
+`backfill_daily_profit_logs()` failures are swallowed silently everywhere. If backfill has an error (e.g. Bug #3), no one gets notified.
+
+### 8. Inconsistent active-tab detection
+`templates/debts.html:53` uses `not selected_status` vs `templates/receivables.html:57` uses `selected_status == None`. Both work for `None` but are inconsistent.
+
+### 9. Double-backup on every startup
+**File:** `main.py:34-37`
+
+`backup_db()` runs on every import/startup, creating a dated backup file. If the app restarts frequently (e.g. dev mode), this creates unnecessary I/O. Minor since only last 3 are kept.
+
+### 10. `delete_debt` prevents deleting paid debts with no cleanup path
+**File:** `crud.py:594-599`
+
+Paid debts accumulate with no way to remove them. While intentional for audit, there should be an admin cleanup mechanism.
+
+---
+
+## 🟢 Info — Design Notes (not bugs)
+
+- **Float for money** — intentional per `AGENTS.md`, but can accumulate rounding errors
+- **Income categories** (Aadhaar, Recharge, Bill Payment etc.) — make sense as income for a CSC shop that earns commissions on these services
+- **No `__init__.py` concern** — the `routers/__init__.py` exists and is required since `main.py` does `from routers.accounts import bp`
+- **No test framework** — per AGENTS.md, but means regressions can't be caught

@@ -1,14 +1,15 @@
+<!-- Rendered by new_account_form() / edit_account_form() at /accounts/new and /accounts/<id>/edit. Expects optional: account, error. -->
 {% extends "base.html" %}
 {% block content %}
 <h2>{% if account %}Edit Account{% else %}Add Account{% endif %}</h2>
 <form method="post" action="{% if account %}/accounts/{{ account.id }}/edit{% else %}/accounts/{% endif %}" class="row g-3">
     <div class="col-md-6">
         <label class="form-label">Account Name</label>
-        <input type="text" name="name" class="form-control" required placeholder="e.g. Rionet, HDFC, Paytm" value="{{ account.name if account else '' }}">
+        <input type="text" name="name" class="form-control" maxlength="100" required placeholder="e.g. Rionet, HDFC, Paytm" value="{{ account.name if account else '' }}">
     </div>
     <div class="col-md-4">
         <label class="form-label">Type</label>
-        <input type="text" name="type" class="form-control" placeholder="e.g. Bank, Wallet, Cash" value="{{ account.type if account else 'General' }}">
+        <input type="text" name="type" class="form-control" maxlength="50" placeholder="e.g. Bank, Wallet, Cash" value="{{ account.type if account else 'General' }}">
     </div>
     <div class="col-md-8">
         <label class="form-label">Description (optional)</label>

@@ -1,3 +1,4 @@
+<!-- Rendered by dashboard() at @app.route("/"). Expects: accounts, recent_transactions, summary, total_balance, fixed_capital, profit, outstanding_debt, outstanding_receivable, net_worth, error. -->
 {% extends "base.html" %}
 {% block content %}
 <h2>Dashboard</h2>
@@ -10,7 +11,7 @@
 {% endif %}
 
 <div class="row mb-4">
-    <div class="col-md-3 mb-2">
+    <div class="col-md-4 mb-2">
         <div class="card text-bg-info h-100">
             <div class="card-body">
                 <h5 class="card-title">Total Balance</h5>
@@ -19,7 +20,7 @@
             </div>
         </div>
     </div>
-    <div class="col-md-3 mb-2">
+    <div class="col-md-4 mb-2">
         <div class="card text-bg-secondary h-100">
             <div class="card-body">
                 <h5 class="card-title">Fixed Capital</h5>
@@ -34,21 +35,12 @@
             </div>
         </div>
     </div>
-    <div class="col-md-3 mb-2">
-        <div class="card h-100 {% if profit >= 0 %}text-bg-success{% else %}text-bg-danger{% endif %}">
+    <div class="col-md-4 mb-2">
+        <div class="card h-100 {% if profit > 0 %}text-bg-success{% elif profit < 0 %}text-bg-danger{% else %}text-bg-secondary{% endif %}">
             <div class="card-body">
                 <h5 class="card-title">Profit</h5>
                 <p class="card-text fs-3">&#x20B9;{{ "%.2f"|format(profit) }}</p>
                 <small>Balance &minus; Capital</small>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3 mb-2">
-        <div class="card h-100 {% if net_profit >= 0 %}text-bg-success{% else %}text-bg-danger{% endif %}">
-            <div class="card-body">
-                <h5 class="card-title">Net Profit</h5>
-                <p class="card-text fs-3">&#x20B9;{{ "%.2f"|format(net_profit) }}</p>
-                <small>Profit &minus; Debt</small>
             </div>
         </div>
     </div>
@@ -73,7 +65,7 @@
         </div>
     </div>
     <div class="col-md-3 mb-2">
-        <div class="card h-100 {% if net_worth >= 0 %}text-bg-success{% else %}text-bg-danger{% endif %}">
+        <div class="card h-100 {% if net_worth > 0 %}text-bg-success{% elif net_worth < 0 %}text-bg-danger{% else %}text-bg-secondary{% endif %}">
             <div class="card-body">
                 <h5 class="card-title">Net Worth</h5>
                 <p class="card-text fs-3">&#x20B9;{{ "%.2f"|format(net_worth) }}</p>
@@ -193,6 +185,10 @@
                 <td>
                     {% if txn.type == "credit" %}
                     <span class="badge bg-success">CREDIT</span>
+                    {% elif txn.type == "loan" %}
+                    <span class="badge bg-info text-dark">LOAN</span>
+                    {% elif txn.type == "repayment" %}
+                    <span class="badge bg-warning text-dark">REPAYMENT</span>
                     {% else %}
                     <span class="badge bg-danger">DEBIT</span>
                     {% endif %}

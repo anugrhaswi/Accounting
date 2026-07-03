@@ -1,5 +1,11 @@
+"""Database CRUD operations for all models.
+
+Each function takes a SQLAlchemy Session as the first parameter and
+raises ValueError for business-rule violations.
+"""
+
 import uuid
-from datetime import datetime, timezone, timedelta
+from datetime import date, datetime, timezone, timedelta
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
@@ -9,11 +15,13 @@ from schemas import asdict
 
 
 def get_accounts(db: Session):
+    """Return all accounts sorted by name."""
     result = db.execute(select(models.Account).order_by(models.Account.name))
     return result.scalars().all()
 
 
 def get_account(db: Session, account_id: int):
+    """Return a single account by ID. Raises ValueError if not found."""
     account = db.get(models.Account, account_id)
     if not account:
         raise ValueError("Account not found")
@@ -21,6 +29,7 @@ def get_account(db: Session, account_id: int):
 
 
 def create_account(db: Session, data: schemas.AccountCreate):
+    """Create a new account from form data."""
     account = models.Account(**asdict(data))
     db.add(account)
     db.flush()
@@ -29,6 +38,7 @@ def create_account(db: Session, data: schemas.AccountCreate):
 
 
 def delete_account(db: Session, account_id: int):
+    """Delete an account if it has no transactions. Raises ValueError otherwise."""
     account = get_account(db, account_id)
     result = db.execute(
         select(models.Transaction).where(models.Transaction.account_id == account_id).limit(1)
@@ -40,11 +50,13 @@ def delete_account(db: Session, account_id: int):
 
 
 def get_total_balance(db: Session):
+    """Return the sum of all account balances."""
     result = db.execute(select(func.coalesce(func.sum(models.Account.balance), 0)))
     return result.scalar()
 
 
 def get_setting(db: Session, key: str, default: str = None):
+    """Read a setting from the key-value store. Returns default if missing."""
     result = db.execute(
         select(models.Setting).where(models.Setting.key == key)
     )
@@ -53,6 +65,7 @@ def get_setting(db: Session, key: str, default: str = None):
 
 
 def set_setting(db: Session, key: str, value: str):
+    """Write a setting to the key-value store (insert or update)."""
     result = db.execute(
         select(models.Setting).where(models.Setting.key == key)
     )
@@ -65,6 +78,10 @@ def set_setting(db: Session, key: str, value: str):
 
 
 def get_transactions(db: Session, account_id: int = None, txn_type: str = None, skip: int = 0, limit: int = 100):
+    """Return transactions with optional filters, newest first.
+
+    Eager-loads the related account. Filters by account_id and/or type.
+    """
     query = (
         select(models.Transaction)
         .options(selectinload(models.Transaction.account))
@@ -79,11 +96,21 @@ def get_transactions(db: Session, account_id: int = None, txn_type: str = None, 
 
 
 def create_transaction(db: Session, data: schemas.TransactionCreate):
+    """Create a transaction and update the account balance.
+
+    Validates: no direct Transfer category, no reserved reference prefix,
+    sufficient balance for debit/repayment. Raises ValueError on failure.
+    """
+    if data.category == "Transfer":
+        raise ValueError("Cannot create a transaction with category 'Transfer' directly. Use the transfer form.")
+    if data.reference:
+        if data.reference.startswith("debt:") or data.reference.startswith("receivable:") or data.reference.startswith("xfer:"):
+            raise ValueError("Reference prefix not allowed")
     account = get_account(db, data.account_id)
-    if data.type == "debit" and account.balance < data.amount:
+    if data.type in ("debit", "repayment") and account.balance < data.amount:
         raise ValueError("Insufficient balance")
     transaction = models.Transaction(**asdict(data))
-    if data.type == "credit":
+    if data.type in ("credit", "loan"):
         account.balance += data.amount
     else:
         account.balance -= data.amount
@@ -94,6 +121,7 @@ def create_transaction(db: Session, data: schemas.TransactionCreate):
 
 
 def get_transaction(db: Session, transaction_id: int):
+    """Return a single transaction by ID. Raises ValueError if not found."""
     txn = db.get(models.Transaction, transaction_id)
     if not txn:
         raise ValueError("Transaction not found")
@@ -101,10 +129,17 @@ def get_transaction(db: Session, transaction_id: int):
 
 
 def delete_transaction(db: Session, transaction_id: int):
+    """Delete a transaction and reverse its balance change.
+
+    For transfers: also reverses the paired transaction.
+    For debt-linked txns: reverts debt status/received_at as needed.
+    For receivable-linked txns: reverts receivable status.
+    """
     txn = get_transaction(db, transaction_id)
     account = txn.account
 
     if txn.category == "Transfer" and txn.reference and txn.reference.startswith("xfer:"):
+        # Find and reverse the paired side of the transfer
         pair_type = "credit" if txn.type == "debit" else "debit"
         pair_txn = db.execute(
             select(models.Transaction).where(
@@ -124,7 +159,7 @@ def delete_transaction(db: Session, transaction_id: int):
                 pair_account.balance += pair_txn.amount
             db.delete(pair_txn)
 
-        if txn.type == "debit":
+        if txn.type in ("debit", "repayment"):
             account.balance += txn.amount
         else:
             if account.balance < txn.amount:
@@ -135,23 +170,29 @@ def delete_transaction(db: Session, transaction_id: int):
         db.flush()
         return
 
-    if txn.type == "credit":
+    # Reverse the balance change
+    if txn.type in ("credit", "loan"):
         if account.balance < txn.amount:
             raise ValueError("Cannot undo: insufficient balance to reverse credit")
         account.balance -= txn.amount
     else:
         account.balance += txn.amount
 
+    # Revert linked debt state if this was a debt transaction
     if txn.reference and txn.reference.startswith("debt:"):
         try:
             debt_id = int(txn.reference.split(":", 1)[1])
             debt = db.get(models.Debt, debt_id)
-            if debt and debt.status == "paid":
-                debt.status = "unpaid"
-                debt.settled_at = None
+            if debt:
+                if txn.type == "loan":
+                    debt.received_at = None
+                elif txn.type == "repayment" and debt.status == "paid":
+                    debt.status = "unpaid"
+                    debt.settled_at = None
         except (ValueError, TypeError):
             pass
 
+    # Revert linked receivable state if this was a receivable transaction
     if txn.reference and txn.reference.startswith("receivable:"):
         try:
             recv_id = int(txn.reference.split(":", 1)[1])
@@ -167,6 +208,11 @@ def delete_transaction(db: Session, transaction_id: int):
 
 
 def transfer_money(db: Session, data: schemas.TransferCreate):
+    """Transfer money between two accounts.
+
+    Creates a paired debit (from) and credit (to) transaction sharing
+    a generated xfer: reference. Both are created in a single flush.
+    """
     if data.from_account_id == data.to_account_id:
         raise ValueError("Cannot transfer to the same account")
 
@@ -207,6 +253,7 @@ def transfer_money(db: Session, data: schemas.TransferCreate):
 
 
 def get_categories(db: Session, cat_type: str = None):
+    """Return categories, optionally filtered by income/expense type, sorted by sort_order then name."""
     query = select(models.Category).order_by(models.Category.sort_order, models.Category.name)
     if cat_type:
         query = query.where(models.Category.type == cat_type)
@@ -215,6 +262,7 @@ def get_categories(db: Session, cat_type: str = None):
 
 
 def create_category(db: Session, data: schemas.CategoryCreate):
+    """Create a new category label."""
     category = models.Category(**asdict(data))
     db.add(category)
     db.flush()
@@ -223,6 +271,7 @@ def create_category(db: Session, data: schemas.CategoryCreate):
 
 
 def delete_category(db: Session, category_id: int):
+    """Delete a category if no transactions use it. Raises ValueError otherwise."""
     category = db.get(models.Category, category_id)
     if not category:
         raise ValueError("Category not found")
@@ -235,6 +284,7 @@ def delete_category(db: Session, category_id: int):
     db.flush()
 
 
+"""Default category seeds for fresh installations."""
 DEFAULT_CATEGORIES = [
     {"name": "Aadhaar", "type": "income", "sort_order": 1},
     {"name": "Recharge", "type": "income", "sort_order": 2},
@@ -252,6 +302,11 @@ DEFAULT_CATEGORIES = [
 
 
 def seed_default_categories(db: Session):
+    """Seed 12 default categories if the categories table is empty.
+
+    Income: Aadhaar, Recharge, Bill Payment, Insurance, IRCTC, Other Income.
+    Expense: Rent, Electricity, Internet, Supplies, Food, Other Expense.
+    """
     result = db.execute(select(models.Category).limit(1))
     if result.first():
         return
@@ -261,6 +316,10 @@ def seed_default_categories(db: Session):
 
 
 def get_daily_summary(db: Session, date: datetime = None):
+    """Return today's income, expenses, profit, and per-category breakdown.
+
+    Excludes Transfer transactions. Uses credit for income and debit for expenses.
+    """
     if date is None:
         date = datetime.now(timezone.utc)
     day_start = date.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -270,7 +329,7 @@ def get_daily_summary(db: Session, date: datetime = None):
         select(func.coalesce(func.sum(models.Transaction.amount), 0))
         .where(models.Transaction.timestamp >= day_start)
         .where(models.Transaction.timestamp < day_end)
-        .where(models.Transaction.type == "credit")
+        .where(models.Transaction.type.in_(["credit"]))
         .where(models.Transaction.category != "Transfer")
     )
     total_income = income.scalar()
@@ -279,7 +338,7 @@ def get_daily_summary(db: Session, date: datetime = None):
         select(func.coalesce(func.sum(models.Transaction.amount), 0))
         .where(models.Transaction.timestamp >= day_start)
         .where(models.Transaction.timestamp < day_end)
-        .where(models.Transaction.type == "debit")
+        .where(models.Transaction.type.in_(["debit"]))
         .where(models.Transaction.category != "Transfer")
     )
     total_expenses = expenses.scalar()
@@ -288,7 +347,7 @@ def get_daily_summary(db: Session, date: datetime = None):
         select(models.Transaction.category, func.sum(models.Transaction.amount))
         .where(models.Transaction.timestamp >= day_start)
         .where(models.Transaction.timestamp < day_end)
-        .where(models.Transaction.type == "credit")
+        .where(models.Transaction.type.in_(["credit"]))
         .where(models.Transaction.category != "Transfer")
         .group_by(models.Transaction.category)
     )
@@ -297,7 +356,7 @@ def get_daily_summary(db: Session, date: datetime = None):
         select(models.Transaction.category, func.sum(models.Transaction.amount))
         .where(models.Transaction.timestamp >= day_start)
         .where(models.Transaction.timestamp < day_end)
-        .where(models.Transaction.type == "debit")
+        .where(models.Transaction.type.in_(["debit"]))
         .where(models.Transaction.category != "Transfer")
         .group_by(models.Transaction.category)
     )
@@ -312,6 +371,11 @@ def get_daily_summary(db: Session, date: datetime = None):
 
 
 def update_daily_profit_log(db: Session, date: datetime):
+    """Create or update the daily profit log entry for a given date.
+
+    Computes income, expenses, new/received receivables, and capital delta.
+    Only creates an entry if there is at least one non-zero value.
+    """
     day_start = date.replace(hour=0, minute=0, second=0, microsecond=0)
     day_end = day_start + timedelta(days=1)
 
@@ -319,7 +383,7 @@ def update_daily_profit_log(db: Session, date: datetime):
         select(func.coalesce(func.sum(models.Transaction.amount), 0))
         .where(models.Transaction.timestamp >= day_start)
         .where(models.Transaction.timestamp < day_end)
-        .where(models.Transaction.type == "credit")
+        .where(models.Transaction.type.in_(["credit"]))
         .where(models.Transaction.category != "Transfer")
     ).scalar()
 
@@ -327,21 +391,8 @@ def update_daily_profit_log(db: Session, date: datetime):
         select(func.coalesce(func.sum(models.Transaction.amount), 0))
         .where(models.Transaction.timestamp >= day_start)
         .where(models.Transaction.timestamp < day_end)
-        .where(models.Transaction.type == "debit")
+        .where(models.Transaction.type.in_(["debit"]))
         .where(models.Transaction.category != "Transfer")
-    ).scalar()
-
-    new_debts = db.execute(
-        select(func.coalesce(func.sum(models.Debt.amount), 0))
-        .where(models.Debt.created_at >= day_start)
-        .where(models.Debt.created_at < day_end)
-    ).scalar()
-
-    settled_debts = db.execute(
-        select(func.coalesce(func.sum(models.Debt.amount), 0))
-        .where(models.Debt.settled_at >= day_start)
-        .where(models.Debt.settled_at < day_end)
-        .where(models.Debt.status == "paid")
     ).scalar()
 
     new_receivables = db.execute(
@@ -362,6 +413,7 @@ def update_daily_profit_log(db: Session, date: datetime):
     except (ValueError, TypeError):
         today_capital = 0.0
 
+    # Compute capital delta vs the most recent previous entry
     day_key = day_start.date()
     yesterday_entry = db.execute(
         select(models.DailyProfitLog)
@@ -372,9 +424,7 @@ def update_daily_profit_log(db: Session, date: datetime):
     yesterday_capital = yesterday_entry.capital if yesterday_entry else today_capital
     capital_delta = today_capital - yesterday_capital
 
-    net_receivable = new_receivables - received_receivables
-    net_debt = new_debts - settled_debts
-    profit = income - expenses + net_receivable - net_debt - capital_delta
+    profit = income - expenses
 
     existing = db.execute(
         select(models.DailyProfitLog).where(models.DailyProfitLog.date == day_key)
@@ -383,18 +433,15 @@ def update_daily_profit_log(db: Session, date: datetime):
     if existing:
         existing.income = income
         existing.expenses = expenses
-        existing.new_debts = new_debts
-        existing.settled_debts = settled_debts
         existing.new_receivables = new_receivables
         existing.received_receivables = received_receivables
         existing.capital = today_capital
         existing.capital_delta = capital_delta
         existing.profit = profit
         existing.updated_at = datetime.now(timezone.utc)
-    else:
+    elif income or expenses or new_receivables or received_receivables or capital_delta:
         db.add(models.DailyProfitLog(
             date=day_key, income=income, expenses=expenses,
-            new_debts=new_debts, settled_debts=settled_debts,
             new_receivables=new_receivables, received_receivables=received_receivables,
             capital=today_capital, capital_delta=capital_delta, profit=profit,
         ))
@@ -402,6 +449,7 @@ def update_daily_profit_log(db: Session, date: datetime):
 
 
 def get_daily_profit_logs(db: Session, limit: int = 365):
+    """Return the most recent daily profit log entries."""
     result = db.execute(
         select(models.DailyProfitLog)
         .order_by(models.DailyProfitLog.date.desc())
@@ -411,22 +459,49 @@ def get_daily_profit_logs(db: Session, limit: int = 365):
 
 
 def backfill_daily_profit_logs(db: Session):
-    first_txn = db.execute(
-        select(func.date(func.min(models.Transaction.timestamp)))
-    ).scalar()
-    if not first_txn:
-        return
-    first_date = datetime.strptime(first_txn, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    """Fill or update daily profit log entries from the first transaction date to today.
+
+    Skips days with no activity. Iterates day by day calling update_daily_profit_log.
+    """
     today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
 
-    cursor = first_date
-    while cursor < today:
+    last_log = db.execute(
+        select(func.max(models.DailyProfitLog.date))
+    ).scalar()
+    if last_log:
+        cursor = datetime.combine(last_log, datetime.min.time()).replace(tzinfo=timezone.utc)
+        cursor += timedelta(days=1)
+        if cursor > today:
+            return
+    else:
+        first_txn = db.execute(
+            select(func.date(func.min(models.Transaction.timestamp)))
+        ).scalar()
+        if not first_txn:
+            return
+        if isinstance(first_txn, date):
+            cursor = datetime.combine(first_txn, datetime.min.time()).replace(tzinfo=timezone.utc)
+        else:
+            cursor = datetime.strptime(first_txn, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+
+    while cursor <= today:
         update_daily_profit_log(db, cursor)
         cursor += timedelta(days=1)
     db.flush()
 
 
+def get_min_transaction_year(db: Session):
+    """Return the earliest year among all transactions (for the year selector)."""
+    result = db.execute(
+        select(func.strftime("%Y", models.Transaction.timestamp))
+        .order_by(models.Transaction.timestamp)
+        .limit(1)
+    )
+    return int(result.scalar()) if result.scalar() else None
+
+
 def get_monthly_days(db: Session, year: int, month: int):
+    """Return daily income/expense/profit for a given month, excluding transfers."""
     month_start = datetime(year, month, 1, tzinfo=timezone.utc)
     if month == 12:
         next_month = datetime(year + 1, 1, 1, tzinfo=timezone.utc)
@@ -453,7 +528,7 @@ def get_monthly_days(db: Session, year: int, month: int):
             daily[d] = {"income": 0, "expenses": 0}
         if row.type == "credit":
             daily[d]["income"] += row.total
-        else:
+        elif row.type == "debit":
             daily[d]["expenses"] += row.total
 
     return [
@@ -463,6 +538,7 @@ def get_monthly_days(db: Session, year: int, month: int):
 
 
 def get_monthly_overview(db: Session):
+    """Return monthly income/expense/profit totals across all months, newest first."""
     rows = db.execute(
         select(
             func.strftime("%Y-%m", models.Transaction.timestamp).label("month"),
@@ -481,7 +557,7 @@ def get_monthly_overview(db: Session):
             monthly[m] = {"income": 0, "expenses": 0}
         if row.type == "credit":
             monthly[m]["income"] += row.total
-        else:
+        elif row.type == "debit":
             monthly[m]["expenses"] += row.total
 
     return [
@@ -491,6 +567,7 @@ def get_monthly_overview(db: Session):
 
 
 def get_debts(db: Session, status: str = None):
+    """Return debts, optionally filtered by status (unpaid/paid), newest first."""
     query = select(models.Debt).order_by(models.Debt.created_at.desc())
     if status:
         query = query.where(models.Debt.status == status)
@@ -499,6 +576,7 @@ def get_debts(db: Session, status: str = None):
 
 
 def get_debt(db: Session, debt_id: int):
+    """Return a single debt by ID. Raises ValueError if not found."""
     debt = db.get(models.Debt, debt_id)
     if not debt:
         raise ValueError("Debt not found")
@@ -506,6 +584,7 @@ def get_debt(db: Session, debt_id: int):
 
 
 def create_debt(db: Session, data: schemas.DebtCreate):
+    """Create a new unpaid debt record. Parses ISO date string for due_date."""
     due = None
     if data.due_date:
         try:
@@ -513,7 +592,7 @@ def create_debt(db: Session, data: schemas.DebtCreate):
             if due.tzinfo is None:
                 due = due.replace(tzinfo=timezone.utc)
         except (ValueError, TypeError):
-            pass
+            raise ValueError(f"Invalid due date format: {data.due_date}")
     debt = models.Debt(
         creditor=data.creditor,
         amount=data.amount,
@@ -529,6 +608,10 @@ def create_debt(db: Session, data: schemas.DebtCreate):
 
 
 def settle_debt(db: Session, debt_id: int, account_id: int):
+    """Repay a debt by creating a repayment transaction from the given account.
+
+    Marks the debt as paid and records settled_at.
+    """
     debt = get_debt(db, debt_id)
     if debt.status == "paid":
         raise ValueError("Debt is already settled")
@@ -539,7 +622,7 @@ def settle_debt(db: Session, debt_id: int, account_id: int):
 
     transaction = models.Transaction(
         account_id=account_id,
-        type="debit",
+        type="repayment",
         amount=debt.amount,
         category=debt.category or "General",
         description=debt.description or f"Payment for {debt.creditor}",
@@ -555,7 +638,37 @@ def settle_debt(db: Session, debt_id: int, account_id: int):
     return debt, transaction
 
 
+def receive_loan(db: Session, debt_id: int, account_id: int):
+    """Receive a loan by creating a loan transaction into the given account.
+
+    Records received_at on the debt. Does not change the debt status
+    (remains unpaid until settled).
+    """
+    debt = get_debt(db, debt_id)
+    if debt.status == "paid":
+        raise ValueError("Debt is already paid")
+
+    account = get_account(db, account_id)
+
+    transaction = models.Transaction(
+        account_id=account_id,
+        type="loan",
+        amount=debt.amount,
+        category=debt.category or "General",
+        description=debt.description or f"Loan received from {debt.creditor}",
+        reference=f"debt:{debt.id}",
+    )
+    account.balance += debt.amount
+    debt.received_at = datetime.now(timezone.utc)
+
+    db.add(transaction)
+    db.flush()
+    db.refresh(transaction)
+    return debt, transaction
+
+
 def get_total_outstanding_debt(db: Session):
+    """Return the sum of all unpaid debt amounts."""
     result = db.execute(
         select(func.coalesce(func.sum(models.Debt.amount), 0))
         .where(models.Debt.status == "unpaid")
@@ -564,6 +677,7 @@ def get_total_outstanding_debt(db: Session):
 
 
 def delete_debt(db: Session, debt_id: int):
+    """Delete an unpaid debt. Raises ValueError if already paid."""
     debt = get_debt(db, debt_id)
     if debt.status == "paid":
         raise ValueError("Cannot delete a paid debt")
@@ -572,6 +686,7 @@ def delete_debt(db: Session, debt_id: int):
 
 
 def get_receivables(db: Session, status: str = None):
+    """Return receivables, optionally filtered by status, newest first."""
     query = select(models.Receivable).order_by(models.Receivable.created_at.desc())
     if status:
         query = query.where(models.Receivable.status == status)
@@ -580,6 +695,7 @@ def get_receivables(db: Session, status: str = None):
 
 
 def get_receivable(db: Session, recv_id: int):
+    """Return a single receivable by ID. Raises ValueError if not found."""
     recv = db.get(models.Receivable, recv_id)
     if not recv:
         raise ValueError("Receivable not found")
@@ -587,6 +703,7 @@ def get_receivable(db: Session, recv_id: int):
 
 
 def create_receivable(db: Session, data: schemas.ReceivableCreate):
+    """Create a new unreceived receivable record. Parses ISO date string for due_date."""
     due = None
     if data.due_date:
         try:
@@ -594,7 +711,7 @@ def create_receivable(db: Session, data: schemas.ReceivableCreate):
             if due.tzinfo is None:
                 due = due.replace(tzinfo=timezone.utc)
         except (ValueError, TypeError):
-            pass
+            raise ValueError(f"Invalid due date format: {data.due_date}")
     recv = models.Receivable(
         debtor=data.debtor,
         amount=data.amount,
@@ -610,6 +727,10 @@ def create_receivable(db: Session, data: schemas.ReceivableCreate):
 
 
 def receive_receivable(db: Session, recv_id: int, account_id: int):
+    """Record receipt of a receivable payment into the given account.
+
+    Creates a credit transaction and marks the receivable as received.
+    """
     recv = get_receivable(db, recv_id)
     if recv.status == "received":
         raise ValueError("Receivable is already received")
@@ -635,6 +756,7 @@ def receive_receivable(db: Session, recv_id: int, account_id: int):
 
 
 def get_total_outstanding_receivable(db: Session):
+    """Return the sum of all unreceived receivable amounts."""
     result = db.execute(
         select(func.coalesce(func.sum(models.Receivable.amount), 0))
         .where(models.Receivable.status == "unreceived")
@@ -643,6 +765,7 @@ def get_total_outstanding_receivable(db: Session):
 
 
 def delete_receivable(db: Session, recv_id: int):
+    """Delete an unreceived receivable. Raises ValueError if already received."""
     recv = get_receivable(db, recv_id)
     if recv.status == "received":
         raise ValueError("Cannot delete a received receivable")
@@ -651,6 +774,7 @@ def delete_receivable(db: Session, recv_id: int):
 
 
 def update_account(db: Session, account_id: int, data: schemas.AccountCreate):
+    """Update an account's name, type, and description."""
     account = get_account(db, account_id)
     account.name = data.name
     account.type = data.type
@@ -661,43 +785,63 @@ def update_account(db: Session, account_id: int, data: schemas.AccountCreate):
 
 
 def update_transaction(db: Session, transaction_id: int, data: schemas.TransactionCreate):
+    """Update a transaction by reversing the old balance and applying the new one.
+
+    Validates in order:
+    1. Old transaction can be reversed (sufficient balance).
+    2. Post-reversal balance supports the new transaction.
+    3. Then applies both changes atomically.
+
+    Transfer transactions and linked debt/receivable references are protected.
+    """
     txn = get_transaction(db, transaction_id)
 
+    # Block editing of transfer transactions (must delete and recreate)
     if txn.category == "Transfer" and txn.reference and txn.reference.startswith("xfer:"):
         raise ValueError("Cannot edit transfer transactions")
-    if txn.reference:
-        if txn.reference.startswith("debt:"):
-            raise ValueError("Cannot edit debt payment transactions directly")
-        if txn.reference.startswith("receivable:"):
-            raise ValueError("Cannot edit receivable receipt transactions directly")
-
+    # Block setting Transfer on non-transfer transactions
     if data.category == "Transfer" and not (txn.reference and txn.reference.startswith("xfer:")):
         raise ValueError("Cannot set category to Transfer on a non-transfer transaction")
 
+    # Only block reference changes to reserved prefixes — allow preserving existing ones
     if data.reference:
-        if data.reference.startswith("debt:") or data.reference.startswith("receivable:") or data.reference.startswith("xfer:"):
-            raise ValueError("Invalid reference format")
+        if (data.reference.startswith("debt:") or data.reference.startswith("receivable:") or data.reference.startswith("xfer:")):
+            if txn.reference != data.reference:
+                raise ValueError("Invalid reference format")
 
     old_account = txn.account
     old_type = txn.type
     old_amount = txn.amount
-
-    if old_type == "credit":
-        if old_account.balance < old_amount:
-            raise ValueError("Cannot undo: insufficient balance to reverse credit")
-        old_account.balance -= old_amount
-    else:
-        old_account.balance += old_amount
 
     if data.account_id != txn.account_id:
         new_account = get_account(db, data.account_id)
     else:
         new_account = old_account
 
-    if data.type == "debit" and new_account.balance < data.amount:
+    # Step 1: validate reversal is possible (before touching balances)
+    if old_type in ("credit", "loan"):
+        if old_account.balance < old_amount:
+            raise ValueError("Cannot undo: insufficient balance to reverse credit")
+
+    # Step 2: compute old account balance after reversal
+    if old_type in ("credit", "loan"):
+        old_post_reversal = old_account.balance - old_amount
+    else:
+        old_post_reversal = old_account.balance + old_amount
+
+    # Step 3: validate new transaction against the post-reversal balance
+    balance_for_new = old_post_reversal if new_account is old_account else new_account.balance
+    if data.type in ("debit", "repayment") and balance_for_new < data.amount:
         raise ValueError("Insufficient balance")
 
-    if data.type == "credit":
+    # Step 4: safe to apply — reverse old
+    if old_type in ("credit", "loan"):
+        old_account.balance -= old_amount
+    else:
+        old_account.balance += old_amount
+
+    # Step 5: apply new
+    if data.type in ("credit", "loan"):
         new_account.balance += data.amount
     else:
         new_account.balance -= data.amount
@@ -715,6 +859,11 @@ def update_transaction(db: Session, transaction_id: int, data: schemas.Transacti
 
 
 def update_debt(db: Session, debt_id: int, data: schemas.DebtCreate):
+    """Update a debt record.
+
+    For paid debts: only metadata (creditor, category, description) can change.
+    For unpaid debts: amount is locked once a loan has been received.
+    """
     debt = get_debt(db, debt_id)
 
     if debt.status == "paid":
@@ -722,6 +871,15 @@ def update_debt(db: Session, debt_id: int, data: schemas.DebtCreate):
         debt.category = data.category
         debt.description = data.description
     else:
+        # Prevent amount change if loan was already deposited
+        existing_loan = db.execute(
+            select(models.Transaction).where(
+                models.Transaction.reference == f"debt:{debt_id}",
+                models.Transaction.type == "loan",
+            ).limit(1)
+        ).scalar_one_or_none()
+        if existing_loan and data.amount != debt.amount:
+            raise ValueError("Cannot change amount after loan has been received")
         due = None
         if data.due_date:
             try:
@@ -729,7 +887,7 @@ def update_debt(db: Session, debt_id: int, data: schemas.DebtCreate):
                 if due.tzinfo is None:
                     due = due.replace(tzinfo=timezone.utc)
             except (ValueError, TypeError):
-                pass
+                raise ValueError(f"Invalid due date format: {data.due_date}")
         debt.creditor = data.creditor
         debt.amount = data.amount
         debt.category = data.category
@@ -742,6 +900,10 @@ def update_debt(db: Session, debt_id: int, data: schemas.DebtCreate):
 
 
 def update_receivable(db: Session, recv_id: int, data: schemas.ReceivableCreate):
+    """Update a receivable record.
+
+    For received receivables: only metadata (debtor, category, description) can change.
+    """
     recv = get_receivable(db, recv_id)
 
     if recv.status == "received":
@@ -756,7 +918,7 @@ def update_receivable(db: Session, recv_id: int, data: schemas.ReceivableCreate)
                 if due.tzinfo is None:
                     due = due.replace(tzinfo=timezone.utc)
             except (ValueError, TypeError):
-                pass
+                raise ValueError(f"Invalid due date format: {data.due_date}")
         recv.debtor = data.debtor
         recv.amount = data.amount
         recv.category = data.category

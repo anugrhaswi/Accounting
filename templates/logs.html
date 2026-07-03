@@ -1,3 +1,4 @@
+<!-- Rendered by view_logs() at @app.route("/logs"). Expects: accounts, transactions, selected_account_id, selected_type, error. -->
 {% extends "base.html" %}
 {% block content %}
 <h2>Transaction Logs</h2>
@@ -22,8 +23,10 @@
         <label class="form-label">Type</label>
         <select name="type" class="form-select">
             <option value="">All</option>
-            <option value="credit" {% if selected_type == "credit" %}selected{% endif %}>Credit</option>
-            <option value="debit" {% if selected_type == "debit" %}selected{% endif %}>Debit</option>
+            <option value="credit" {% if selected_type == "credit" %}selected{% endif %}>Credit (Money In)</option>
+            <option value="debit" {% if selected_type == "debit" %}selected{% endif %}>Debit (Money Out)</option>
+            <option value="loan" {% if selected_type == "loan" %}selected{% endif %}>Loan (Money In)</option>
+            <option value="repayment" {% if selected_type == "repayment" %}selected{% endif %}>Repayment (Money Out)</option>
         </select>
     </div>
     <div class="col-md-3 d-flex align-items-end">
@@ -54,6 +57,10 @@
                 <td>
                     {% if txn.type == "credit" %}
                     <span class="badge bg-success">CREDIT</span>
+                    {% elif txn.type == "loan" %}
+                    <span class="badge bg-info text-dark">LOAN</span>
+                    {% elif txn.type == "repayment" %}
+                    <span class="badge bg-warning text-dark">REPAYMENT</span>
                     {% else %}
                     <span class="badge bg-danger">DEBIT</span>
                     {% endif %}

@@ -1,3 +1,14 @@
+"""Flask application entry point with startup lifecycle.
+
+Startup order (module-level, before app is created):
+  1. restore_db()  — recover from corruption using .bak
+  2. create_tables() — ensure all tables and schema migrations exist
+  3. backup_db()   — create dated backup + .bak
+  4. seed_data()   — populate default categories if empty
+
+Blueprints are registered manually after app creation (no __init__ package).
+"""
+
 import os
 import shutil
 from datetime import date, datetime, timezone
@@ -13,11 +24,23 @@ BAK_PATH = DB_PATH + ".bak"
 
 
 def restore_db():
+    """Check DB integrity on startup. If corrupted, restore from .bak backup."""
+    if os.path.exists(DB_PATH):
+        try:
+            with engine.connect() as conn:
+                result = conn.execute(text("PRAGMA integrity_check")).scalar()
+                if result != "ok":
+                    raise RuntimeError(f"DB integrity check failed: {result}")
+        except Exception:
+            corrupted = DB_PATH + ".corrupted"
+            shutil.move(DB_PATH, corrupted)
+            print(f"DB corrupted — moved to {corrupted}")
     if not os.path.exists(DB_PATH) and os.path.exists(BAK_PATH):
         shutil.copy2(BAK_PATH, DB_PATH)
 
 
 def backup_db():
+    """Copy current DB to .bak and a dated backup file. Keeps the 3 most recent dated backups."""
     if os.path.exists(DB_PATH):
         os.makedirs(BACKUP_DIR, exist_ok=True)
         dated = os.path.join(BACKUP_DIR, f"accounting_{date.today()}.db")
@@ -29,6 +52,7 @@ def backup_db():
 
 
 def create_tables():
+    """Create all tables via SQLAlchemy and run ALTER TABLE migrations for legacy columns."""
     Base.metadata.create_all(bind=engine)
     with engine.begin() as conn:
         result = conn.execute(text("PRAGMA table_info(transactions)"))
@@ -38,12 +62,18 @@ def create_tables():
 
         result = conn.execute(text("PRAGMA table_info(daily_profit_log)"))
         cols = [r[1] for r in result]
-        for col in ["new_debts", "settled_debts", "new_receivables", "received_receivables", "capital", "capital_delta"]:
+        for col in ["new_receivables", "received_receivables", "capital", "capital_delta"]:
             if col not in cols:
                 conn.execute(text(f"ALTER TABLE daily_profit_log ADD COLUMN {col} FLOAT DEFAULT 0"))
 
+        result = conn.execute(text("PRAGMA table_info(debts)"))
+        cols = [r[1] for r in result]
+        if "received_at" not in cols:
+            conn.execute(text("ALTER TABLE debts ADD COLUMN received_at DATETIME"))
+
 
 def seed_data():
+    """Seed default income/expense categories if the categories table is empty."""
     with SessionLocal() as session:
         crud.seed_default_categories(session)
         session.commit()
@@ -72,6 +102,7 @@ app.register_blueprint(receivables_bp)
 
 @app.teardown_request
 def close_db(exception=None):
+    """Commit or roll back the session at the end of each request."""
     db = g.pop("db", None)
     if db is not None:
         try:
@@ -85,6 +116,7 @@ def close_db(exception=None):
 
 @app.route("/")
 def dashboard():
+    """Render the main dashboard with account balances, recent transactions, and P&L summary."""
     db = get_db()
     error = request.args.get("error")
     accounts_list = crud.get_accounts(db)
@@ -97,14 +129,14 @@ def dashboard():
         fixed_capital = 0.0
     profit = total_balance - fixed_capital
     outstanding_debt = crud.get_total_outstanding_debt(db)
-    net_profit = profit - outstanding_debt
     outstanding_receivable = crud.get_total_outstanding_receivable(db)
     net_worth = total_balance + outstanding_receivable - outstanding_debt
-    return render_template("index.html", accounts=accounts_list, recent_transactions=recent_transactions, summary=summary, total_balance=total_balance, fixed_capital=fixed_capital, profit=profit, net_profit=net_profit, outstanding_debt=outstanding_debt, outstanding_receivable=outstanding_receivable, net_worth=net_worth, error=error)
+    return render_template("index.html", accounts=accounts_list, recent_transactions=recent_transactions, summary=summary, total_balance=total_balance, fixed_capital=fixed_capital, profit=profit, outstanding_debt=outstanding_debt, outstanding_receivable=outstanding_receivable, net_worth=net_worth, error=error)
 
 
 @app.route("/settings/capital", methods=["POST"])
 def update_capital():
+    """Update the fixed capital setting and backfill daily profit logs."""
     db = get_db()
     value = request.form.get("fixed_capital", "0")
     try:
@@ -112,11 +144,14 @@ def update_capital():
     except (ValueError, TypeError):
         value = "0"
     crud.set_setting(db, "fixed_capital", value)
+    try: crud.backfill_daily_profit_logs(db)
+    except Exception as e: print(f"backfill error: {e}")
     return redirect("/", 303)
 
 
 @app.route("/logs")
 def view_logs():
+    """Render the transaction log viewer with optional account/type filters."""
     db = get_db()
     error = request.args.get("error")
     account_id_arg = request.args.get("account_id")
@@ -132,6 +167,7 @@ def view_logs():
 
 @app.route("/backup")
 def download_backup():
+    """Download the current SQLite database file as an attachment."""
     return send_file(DB_PATH, as_attachment=True, download_name="accounting_backup.db")
 
 

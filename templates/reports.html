@@ -1,3 +1,4 @@
+<!-- Rendered by reports_page() at /reports/. Expects: daily, monthly, selected_year, selected_month, selected_month_name, years, month_names, profit, outstanding_debt, outstanding_receivable, reports_net_worth. -->
 {% extends "base.html" %}
 {% block content %}
 <h2>Reports — P&amp;L</h2>
@@ -100,8 +101,8 @@
 
 <h4>Overall Summary</h4>
 <div class="row mb-4">
-    <div class="col-md-3 mb-2">
-        <div class="card h-100 {% if profit >= 0 %}text-bg-success{% else %}text-bg-danger{% endif %}">
+    <div class="col-md-4 mb-2">
+        <div class="card h-100 {% if profit > 0 %}text-bg-success{% elif profit < 0 %}text-bg-danger{% else %}text-bg-secondary{% endif %}">
             <div class="card-body">
                 <h5 class="card-title">Profit</h5>
                 <p class="card-text fs-3">&#x20B9;{{ "%.2f"|format(profit) }}</p>
@@ -109,16 +110,7 @@
             </div>
         </div>
     </div>
-    <div class="col-md-3 mb-2">
-        <div class="card h-100 {% if net_profit >= 0 %}text-bg-success{% else %}text-bg-danger{% endif %}">
-            <div class="card-body">
-                <h5 class="card-title">Net Profit</h5>
-                <p class="card-text fs-3">&#x20B9;{{ "%.2f"|format(net_profit) }}</p>
-                <small>Profit &minus; Debt</small>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3 mb-2">
+    <div class="col-md-4 mb-2">
         <div class="card text-bg-warning h-100">
             <div class="card-body">
                 <h5 class="card-title">Outstanding Receivable</h5>
@@ -127,8 +119,8 @@
             </div>
         </div>
     </div>
-    <div class="col-md-3 mb-2">
-        <div class="card h-100 {% if reports_net_worth >= 0 %}text-bg-success{% else %}text-bg-danger{% endif %}">
+    <div class="col-md-4 mb-2">
+        <div class="card h-100 {% if reports_net_worth > 0 %}text-bg-success{% elif reports_net_worth < 0 %}text-bg-danger{% else %}text-bg-secondary{% endif %}">
             <div class="card-body">
                 <h5 class="card-title">Net Worth</h5>
                 <p class="card-text fs-3">&#x20B9;{{ "%.2f"|format(reports_net_worth) }}</p>

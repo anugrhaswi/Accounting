@@ -1,7 +1,8 @@
+<!-- Rendered by profits_page() at /reports/profits. Expects: logs (list of dicts with date, income, expenses, new_receivables, received_receivables, capital, capital_delta, profit, running). -->
 {% extends "base.html" %}
 {% block content %}
 <h2>Daily Profit Log</h2>
-<p class="text-muted">Profit = Income − Expenses + Net Receivable Chg − Net Debt Chg − Capital Delta</p>
+<p class="text-muted">Profit = Income − Expenses (receivable/capital changes shown for reference)</p>
 
 {% if logs %}
 <div class="table-responsive">
@@ -11,8 +12,6 @@
                 <th>Date</th>
                 <th>Income</th>
                 <th>Expenses</th>
-                <th>New Debts</th>
-                <th>Settled Debts</th>
                 <th>New Recv</th>
                 <th>Recv Recv'd</th>
                 <th>Capital</th>
@@ -27,8 +26,6 @@
                 <td>{{ entry.date }}</td>
                 <td>&#x20B9;{{ "%.2f"|format(entry.income) }}</td>
                 <td>&#x20B9;{{ "%.2f"|format(entry.expenses) }}</td>
-                <td>&#x20B9;{{ "%.2f"|format(entry.new_debts) }}</td>
-                <td>&#x20B9;{{ "%.2f"|format(entry.settled_debts) }}</td>
                 <td>&#x20B9;{{ "%.2f"|format(entry.new_receivables) }}</td>
                 <td>&#x20B9;{{ "%.2f"|format(entry.received_receivables) }}</td>
                 <td>&#x20B9;{{ "%.2f"|format(entry.capital) }}</td>

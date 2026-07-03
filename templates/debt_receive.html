@@ -1,7 +1,7 @@
-<!-- Rendered by settle_debt_form() at /debts/<id>/settle. Expects: debt, accounts. -->
+<!-- Rendered by receive_loan_form() at /debts/<id>/receive. Expects: debt, accounts. -->
 {% extends "base.html" %}
 {% block content %}
-<h2>Settle Debt</h2>
+<h2>Receive Loan</h2>
 {% if error %}
 <div class="alert alert-danger">{{ error }}</div>
 {% endif %}
@@ -17,9 +17,9 @@
     </div>
 </div>
 
-<form method="POST" action="/debts/{{ debt.id }}/settle">
+<form method="POST" action="/debts/{{ debt.id }}/receive">
     <div class="mb-3">
-        <label class="form-label">Pay from Account</label>
+        <label class="form-label">Deposit into Account</label>
         <select name="account_id" class="form-select" required>
             <option value="">Select account...</option>
             {% for account in accounts %}
@@ -27,7 +27,7 @@
             {% endfor %}
         </select>
     </div>
-    <button type="submit" class="btn btn-success">Confirm Payment</button>
+    <button type="submit" class="btn btn-primary">Confirm Receipt</button>
     <a href="/debts/" class="btn btn-secondary">Cancel</a>
 </form>
 {% endblock %}

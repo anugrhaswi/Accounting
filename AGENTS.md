@@ -1,92 +1,92 @@
 # AGENTS.md — CSC Shop Accounting (Flask)
 
-## Stack & Setup
-- **Flask 3.x** (sync) + **SQLAlchemy 2.0** (sync) + **SQLite**
-- **Jinja2** (Flask built-in) + **Bootstrap 5** (CDN)
-- Conda env `accounts` (Python 3.12); `greenlet` required on Windows even for sync SQLAlchemy
-- Run: `conda activate accounts && python main.py`
-
-## Backup system
-- On startup: `restore_db()` restores from `.bak` if main DB was deleted; `backup_db()` creates `.bak` + dated backup in `~/backups/`
-- Keeps last 3 dated backups (e.g. `accounting_2026-07-02.db`), older ones auto-deleted
-- `GET /backup` downloads the current DB as `accounting_backup.db`
-- `DB_PATH` = `~/accounting.db`, `BAK_PATH` = `~/accounting.db.bak`, `BACKUP_DIR` = `~/backups/`
+## Run
+```bash
+conda activate accounts && python main.py
+```
 
 ## Architecture
 ```
-main.py -> routers/{accounts,categories,transactions,reports,debts}.py
+main.py -> routers/{accounts,categories,transactions,reports,debts,receivables}.py
         -> crud.py (all DB logic)
-        -> models.py (Account, Transaction, Category, Setting, Debt)
-        -> schemas.py (dataclasses: AccountCreate, TransactionCreate, TransferCreate, CategoryCreate, DebtCreate)
+        -> models.py + schemas.py (dataclasses)
         -> templates/*.html (extends base.html)
 ```
+No `__init__.py` package init — blueprints registered manually in `main.py` after `app` is created.
 
-## Session management
-- DB session stored in `g.db` via `get_db()` from `database.py`
-- `get_db()` creates session lazily on first call in each request
-- `@app.teardown_request` auto-commits on success, rolls back on error, then closes
-- Startup: `create_tables()` runs `Base.metadata.create_all` + ALTER TABLE; `seed_data()` seeds 12 default categories — both at module level before `app` is created
+## Startup lifecycle (module-level, before `app` is created)
+1. `restore_db()` — if DB corrupted (PRAGMA integrity_check fails), moves to `.corrupted` and restores from `.bak`
+2. `create_tables()` — `Base.metadata.create_all` + ALTER TABLE for `category` column on `transactions`
+3. `backup_db()` — copies to `.bak` + dated backup in `~/backups/` (keeps last 3)
+4. `seed_data()` — seeds 12 default categories if table empty: Aadhaar, Recharge, Bill Payment, Insurance, IRCTC, Other Income (income); Rent, Electricity, Internet, Supplies, Food, Other Expense (expense)
 
-## Must-know quirks (agents WILL miss these)
+## Session & DB
+- `get_db()` from `database.py` stores session in `g.db` (lazy, first-call per request)
+- `@app.teardown_request` commits on success, rolls back on error, closes
+- `expire_on_commit=False` — ORM objects stay usable after commit/flush
+- All DB writes via `flush()` only; teardown commits
+- SQLite at `~/accounting.db` — auto-created; `Float` for money (intentional)
 
-### TemplateResponse → render_template
-Flask uses `render_template("index.html", ...)` — NOT `templates.TemplateResponse(request, ...)`.
+## Transaction types (4 — agents miss `loan`/`repayment`)
+- `credit` / `loan` → balance increases
+- `debit` / `repayment` → balance decreases (validated `balance >= amount`)
+- Schema: `TransactionCreate.__post_init__` validates type and `amount > 0`
+
+Profit queries filter `type.in_(["credit"])` for income and `type.in_(["debit"])` for expenses. Loan/repayment types are excluded from P&L (they are financing activities, not operating).
+
+## Key quirks
 
 ### Jinja2 format filter
-Uses old-style `%` formatting only.
-Correct: `{{ "%.2f"|format(value) }}`
-Wrong: `{{ "{:,.2f}"|format(value) }}` — TypeError
+**Only** old-style `%` formatting: `{{ "%.2f"|format(value) }}` — NOT `"{:,.2f}"` (TypeError).
 
 ### Forms
-All forms POST as `application/x-www-form-urlencoded`. Routes parse via `request.form` (synchronous `MultiDict`). Never use Flask-WTF or `flask.request.get_json()`.
+All `application/x-www-form-urlencoded`, parsed via `request.form`. Never Flask-WTF or `get_json()`.
 
-### Profit model
-`net_profit = sum(all account balances) - fixed_capital`
-Fixed capital stored in `settings` table as key-value via `Setting` model. Edit at `POST /settings/capital`.
+### Transfers
+- `TransferCreate` schema, route `POST /transactions/transfer`
+- Creates paired debit/credit with `category="Transfer"` and shared `reference="xfer:<uuid>"`
+- Cannot create/edit/delete single side — `delete_transaction` removes both; edit raises ValueError
+
+### Badge display
+Template badges (index.html, logs.html) must distinguish all 4 types: CREDIT (success), LOAN (info), DEBIT (danger), REPAYMENT (warning). Common bug: only checking `credit` vs else → mislabels `loan` as DEBIT.
+
+### Reference prefixes (reserved)
+`debt:`, `receivable:`, `xfer:` — blocked in `create_transaction` / `update_transaction`. Used internally to link debt/repayment and receivable/received transactions.
+
+### Edit transfer protection
+`update_transaction` raises ValueError for any transaction with `category=="Transfer"` and `reference` starting with `xfer:`.
+
+### Debt workflow (2 sides)
+- **Receive loan**: `GET/POST /debts/<id>/receive` — creates `loan` transaction (credits account), sets reference `debt:<id>`. Template: `debt_receive.html`.
+- **Settle debt**: `GET/POST /debts/<id>/settle` — creates `repayment` transaction (debits account), marks debt paid. Template: `debt_settle.html`.
+
+Deleting a repayment/credit reverses debt status to "unpaid" and clears `settled_at`/`received_at`.
+
+### Daily profit log
+- Formula: `profit = income - expenses` (receivable/capital changes stored as informational columns only)
+- Entry is **not** created for days with zero activity (no transactions, no receivable changes, no capital delta)
+- `backfill_daily_profit_logs()` iterates from first transaction date to today
+
+### Profit model (dashboard)
+`dashboard_profit = total_balance - fixed_capital` — `fixed_capital` stored in `settings` table key-value via `Setting` model. Edit at `POST /settings/capital`.
 
 ### `type` query param
-Logs route uses `txn_type` as the Python variable but `type` as the URL query param:
-`txn_type = request.args.get("type")`
-Template `<select name="type">` matches the URL param.
-
-## Conventions
-- Routes render HTML via Jinja2 (no JSON APIs)
-- POST handlers redirect with `303` status via `redirect(url, 303)`
-- All DB writes via `flush()` — auto-committed by `teardown_request`
-- `expire_on_commit=False` in sessionmaker — ORM objects usable after commit
-- Use `selectinload` for relationship loading
-- No test framework configured
-
-## DB & data safety
-- SQLite at `~/accounting.db` — auto-created + auto-migrated on startup
-- Balance is `Float` (not Decimal) — intentional
-- **CRITICAL**: Never delete `accounting.db` without asking
-- `.gitignore` excludes `accounting.db`, `__pycache__/`, `*.pyc`, `.vscode/`, and **`AGENTS.md`** — `git` will not track changes to this file unless force-added
-
-## Startup lifecycle
-1. `restore_db()` — if DB missing + .bak exists → restore from backup
-2. `create_tables()` runs synchronously: `Base.metadata.create_all` + ALTER TABLE to add `category` column
-3. `backup_db()` — copies DB to `.bak` + dated backup in `~/backups/` (keeps last 3)
-4. `seed_data()`: opens a separate `SessionLocal()` to seed 12 default categories if table is empty
-5. Flask app is created, blueprints registered
-- Categories seeded: Aadhaar, Recharge, Bill Payment, Insurance, IRCTC, Other Income (income); Rent, Electricity, Internet, Supplies, Food, Other Expense (expense).
-
-## Validation rules
-- Account delete blocked (`ValueError`) if transactions exist
-- Both debit and transfer validate `balance >= amount` — insufficient balance returns 400
-- Transaction type is `"credit"`/`"debit"` (validated via `TransactionCreate.__post_init__`)
-- `amount` must be > 0 on all schemas (validated via `__post_init__`)
-- Fixed capital input validated as numeric before storing
-- Transfer transactions set `category="Transfer"` automatically
-- Transfers use shared `reference` field (`xfer:<uuid>`) to link paired debit/credit transactions
-- Delete category blocked (`ValueError`) if transactions use that category
+Logs route (`/logs`) uses `txn_type` as Python var but `type` as URL param: `txn_type = request.args.get("type")`.
 
 ## Error handling
-- `crud.py` raises `ValueError` for business logic errors (insufficient balance, not found)
-- Routes catch `ValueError` to re-render forms with error messages
-- Generic `Exception` catch for unexpected errors (e.g. duplicate name, invalid form values)
-- Session rollback handled automatically by `teardown_request` when exceptions propagate
+- `crud.py` raises `ValueError` for business logic (insufficient balance, not found, blocked delete)
+- Routes catch `ValueError` + `IntegrityError` (duplicate name/constraint violations) before generic `Exception`
+- Session rollback automatic via `teardown_request` on exception
+- `crud.backfill_daily_profit_logs(db)` called after most writes; failure silently ignored (`except Exception: pass`)
+
+## Routes that exist (no missing ones)
+- `/debts/<id>/receive` — loan receipt (new, agents might miss)
+- `/receivables/` + `/receivables/<id>/receive` — receivable management
+- `/reports/` + `/reports/profits` — P&L reports + daily profit log
+- `/settings/capital` — fixed capital edit
+- `/backup` — DB download
 
 ## Deployment
-- **WSGI only** — standard Flask app. Deploy via `gunicorn main:app` or `python main.py`.
-- Cannot run on ASGI-only hosts without a WSGI adapter.
+- WSGI only: `gunicorn main:app` or `python main.py`
+- No ASGI adapter
+- No test framework

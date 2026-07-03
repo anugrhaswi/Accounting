@@ -1,3 +1,4 @@
+<!-- Rendered by list_receivables() at /receivables/. Expects: receivables, outstanding, selected_status, error, optional form_values. -->
 {% extends "base.html" %}
 {% block content %}
 <h2>Receivables</h2>
@@ -27,23 +28,23 @@
         <form method="post" action="/receivables/" class="row g-3">
             <div class="col-md-3">
                 <label class="form-label">Debtor</label>
-                <input type="text" name="debtor" class="form-control" required>
+                <input type="text" name="debtor" class="form-control" maxlength="200" required value="{{ (form_values or {}).get('debtor', '') }}">
             </div>
             <div class="col-md-2">
                 <label class="form-label">Amount</label>
-                <input type="number" name="amount" class="form-control" step="0.01" required>
+                <input type="number" name="amount" class="form-control" step="0.01" min="0.01" required value="{{ (form_values or {}).get('amount', '') }}">
             </div>
             <div class="col-md-2">
                 <label class="form-label">Category</label>
-                <input type="text" name="category" class="form-control" placeholder="General">
+                <input type="text" name="category" class="form-control" maxlength="50" placeholder="General" value="{{ (form_values or {}).get('category', '') }}">
             </div>
             <div class="col-md-3">
                 <label class="form-label">Description</label>
-                <input type="text" name="description" class="form-control">
+                <input type="text" name="description" class="form-control" maxlength="500" value="{{ (form_values or {}).get('description', '') }}">
             </div>
             <div class="col-md-2">
                 <label class="form-label">Due Date</label>
-                <input type="date" name="due_date" class="form-control">
+                <input type="date" name="due_date" class="form-control" value="{{ (form_values or {}).get('due_date', '') }}">
             </div>
             <div class="col-12">
                 <button type="submit" class="btn btn-primary">Add Receivable</button>
