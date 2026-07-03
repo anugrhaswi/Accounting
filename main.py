@@ -36,6 +36,12 @@ def create_tables():
         if "category" not in cols:
             conn.execute(text("ALTER TABLE transactions ADD COLUMN category VARCHAR(50)"))
 
+        result = conn.execute(text("PRAGMA table_info(daily_profit_log)"))
+        cols = [r[1] for r in result]
+        for col in ["new_debts", "settled_debts", "new_receivables", "received_receivables", "capital", "capital_delta"]:
+            if col not in cols:
+                conn.execute(text(f"ALTER TABLE daily_profit_log ADD COLUMN {col} FLOAT DEFAULT 0"))
+
 
 def seed_data():
     with SessionLocal() as session:

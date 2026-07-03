@@ -331,9 +331,50 @@ def update_daily_profit_log(db: Session, date: datetime):
         .where(models.Transaction.category != "Transfer")
     ).scalar()
 
-    profit = income - expenses
+    new_debts = db.execute(
+        select(func.coalesce(func.sum(models.Debt.amount), 0))
+        .where(models.Debt.created_at >= day_start)
+        .where(models.Debt.created_at < day_end)
+    ).scalar()
+
+    settled_debts = db.execute(
+        select(func.coalesce(func.sum(models.Debt.amount), 0))
+        .where(models.Debt.settled_at >= day_start)
+        .where(models.Debt.settled_at < day_end)
+        .where(models.Debt.status == "paid")
+    ).scalar()
+
+    new_receivables = db.execute(
+        select(func.coalesce(func.sum(models.Receivable.amount), 0))
+        .where(models.Receivable.created_at >= day_start)
+        .where(models.Receivable.created_at < day_end)
+    ).scalar()
+
+    received_receivables = db.execute(
+        select(func.coalesce(func.sum(models.Receivable.amount), 0))
+        .where(models.Receivable.received_at >= day_start)
+        .where(models.Receivable.received_at < day_end)
+        .where(models.Receivable.status == "received")
+    ).scalar()
+
+    try:
+        today_capital = float(get_setting(db, "fixed_capital", "0"))
+    except (ValueError, TypeError):
+        today_capital = 0.0
 
     day_key = day_start.date()
+    yesterday_entry = db.execute(
+        select(models.DailyProfitLog)
+        .where(models.DailyProfitLog.date < day_key)
+        .order_by(models.DailyProfitLog.date.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+    yesterday_capital = yesterday_entry.capital if yesterday_entry else today_capital
+    capital_delta = today_capital - yesterday_capital
+
+    net_receivable = new_receivables - received_receivables
+    net_debt = new_debts - settled_debts
+    profit = income - expenses + net_receivable - net_debt - capital_delta
 
     existing = db.execute(
         select(models.DailyProfitLog).where(models.DailyProfitLog.date == day_key)
@@ -342,11 +383,20 @@ def update_daily_profit_log(db: Session, date: datetime):
     if existing:
         existing.income = income
         existing.expenses = expenses
+        existing.new_debts = new_debts
+        existing.settled_debts = settled_debts
+        existing.new_receivables = new_receivables
+        existing.received_receivables = received_receivables
+        existing.capital = today_capital
+        existing.capital_delta = capital_delta
         existing.profit = profit
         existing.updated_at = datetime.now(timezone.utc)
     else:
         db.add(models.DailyProfitLog(
-            date=day_key, income=income, expenses=expenses, profit=profit
+            date=day_key, income=income, expenses=expenses,
+            new_debts=new_debts, settled_debts=settled_debts,
+            new_receivables=new_receivables, received_receivables=received_receivables,
+            capital=today_capital, capital_delta=capital_delta, profit=profit,
         ))
     db.flush()
 
