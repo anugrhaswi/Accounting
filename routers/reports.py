@@ -33,7 +33,7 @@ def reports_page():
     outstanding_debt = crud.get_total_outstanding_debt(db)
     net_profit = profit - outstanding_debt
     outstanding_receivable = crud.get_total_outstanding_receivable(db)
-    reports_net_worth = net_profit + outstanding_receivable
+    reports_net_worth = total_balance + outstanding_receivable - outstanding_debt
 
     month_names = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun",
                    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]

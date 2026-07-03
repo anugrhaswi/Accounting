@@ -93,7 +93,7 @@ def dashboard():
     outstanding_debt = crud.get_total_outstanding_debt(db)
     net_profit = profit - outstanding_debt
     outstanding_receivable = crud.get_total_outstanding_receivable(db)
-    net_worth = net_profit + outstanding_receivable
+    net_worth = total_balance + outstanding_receivable - outstanding_debt
     return render_template("index.html", accounts=accounts_list, recent_transactions=recent_transactions, summary=summary, total_balance=total_balance, fixed_capital=fixed_capital, profit=profit, net_profit=net_profit, outstanding_debt=outstanding_debt, outstanding_receivable=outstanding_receivable, net_worth=net_worth, error=error)
 
 

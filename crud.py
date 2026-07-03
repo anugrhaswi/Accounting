@@ -371,12 +371,7 @@ def backfill_daily_profit_logs(db: Session):
 
     cursor = first_date
     while cursor < today:
-        day_key = cursor.date()
-        existing = db.execute(
-            select(models.DailyProfitLog).where(models.DailyProfitLog.date == day_key)
-        ).scalar_one_or_none()
-        if not existing:
-            update_daily_profit_log(db, cursor)
+        update_daily_profit_log(db, cursor)
         cursor += timedelta(days=1)
     db.flush()
 
