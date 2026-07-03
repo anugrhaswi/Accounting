@@ -58,3 +58,16 @@ class DebtCreate:
     def __post_init__(self):
         if self.amount <= 0:
             raise ValueError("amount must be > 0")
+
+
+@dataclass
+class ReceivableCreate:
+    debtor: str
+    amount: float
+    category: str = "General"
+    description: Optional[str] = None
+    due_date: Optional[str] = None
+
+    def __post_init__(self):
+        if self.amount <= 0:
+            raise ValueError("amount must be > 0")

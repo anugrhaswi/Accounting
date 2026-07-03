@@ -152,6 +152,16 @@ def delete_transaction(db: Session, transaction_id: int):
         except (ValueError, TypeError):
             pass
 
+    if txn.reference and txn.reference.startswith("receivable:"):
+        try:
+            recv_id = int(txn.reference.split(":", 1)[1])
+            recv = db.get(models.Receivable, recv_id)
+            if recv and recv.status == "received":
+                recv.status = "unreceived"
+                recv.received_at = None
+        except (ValueError, TypeError):
+            pass
+
     db.delete(txn)
     db.flush()
 
@@ -301,6 +311,76 @@ def get_daily_summary(db: Session, date: datetime = None):
     }
 
 
+def update_daily_profit_log(db: Session, date: datetime):
+    day_start = date.replace(hour=0, minute=0, second=0, microsecond=0)
+    day_end = day_start + timedelta(days=1)
+
+    income = db.execute(
+        select(func.coalesce(func.sum(models.Transaction.amount), 0))
+        .where(models.Transaction.timestamp >= day_start)
+        .where(models.Transaction.timestamp < day_end)
+        .where(models.Transaction.type == "credit")
+        .where(models.Transaction.category != "Transfer")
+    ).scalar()
+
+    expenses = db.execute(
+        select(func.coalesce(func.sum(models.Transaction.amount), 0))
+        .where(models.Transaction.timestamp >= day_start)
+        .where(models.Transaction.timestamp < day_end)
+        .where(models.Transaction.type == "debit")
+        .where(models.Transaction.category != "Transfer")
+    ).scalar()
+
+    profit = income - expenses
+
+    day_key = day_start.date()
+
+    existing = db.execute(
+        select(models.DailyProfitLog).where(models.DailyProfitLog.date == day_key)
+    ).scalar_one_or_none()
+
+    if existing:
+        existing.income = income
+        existing.expenses = expenses
+        existing.profit = profit
+        existing.updated_at = datetime.now(timezone.utc)
+    else:
+        db.add(models.DailyProfitLog(
+            date=day_key, income=income, expenses=expenses, profit=profit
+        ))
+    db.flush()
+
+
+def get_daily_profit_logs(db: Session, limit: int = 365):
+    result = db.execute(
+        select(models.DailyProfitLog)
+        .order_by(models.DailyProfitLog.date.desc())
+        .limit(limit)
+    )
+    return result.scalars().all()
+
+
+def backfill_daily_profit_logs(db: Session):
+    first_txn = db.execute(
+        select(func.date(func.min(models.Transaction.timestamp)))
+    ).scalar()
+    if not first_txn:
+        return
+    first_date = datetime.strptime(first_txn, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+
+    cursor = first_date
+    while cursor < today:
+        day_key = cursor.date()
+        existing = db.execute(
+            select(models.DailyProfitLog).where(models.DailyProfitLog.date == day_key)
+        ).scalar_one_or_none()
+        if not existing:
+            update_daily_profit_log(db, cursor)
+        cursor += timedelta(days=1)
+    db.flush()
+
+
 def get_monthly_days(db: Session, year: int, month: int):
     month_start = datetime(year, month, 1, tzinfo=timezone.utc)
     if month == 12:
@@ -436,3 +516,90 @@ def get_total_outstanding_debt(db: Session):
         .where(models.Debt.status == "unpaid")
     )
     return result.scalar()
+
+
+def delete_debt(db: Session, debt_id: int):
+    debt = get_debt(db, debt_id)
+    if debt.status == "paid":
+        raise ValueError("Cannot delete a paid debt")
+    db.delete(debt)
+    db.flush()
+
+
+def get_receivables(db: Session, status: str = None):
+    query = select(models.Receivable).order_by(models.Receivable.created_at.desc())
+    if status:
+        query = query.where(models.Receivable.status == status)
+    result = db.execute(query)
+    return result.scalars().all()
+
+
+def get_receivable(db: Session, recv_id: int):
+    recv = db.get(models.Receivable, recv_id)
+    if not recv:
+        raise ValueError("Receivable not found")
+    return recv
+
+
+def create_receivable(db: Session, data: schemas.ReceivableCreate):
+    due = None
+    if data.due_date:
+        try:
+            due = datetime.fromisoformat(data.due_date)
+            if due.tzinfo is None:
+                due = due.replace(tzinfo=timezone.utc)
+        except (ValueError, TypeError):
+            pass
+    recv = models.Receivable(
+        debtor=data.debtor,
+        amount=data.amount,
+        category=data.category,
+        description=data.description,
+        due_date=due,
+        status="unreceived",
+    )
+    db.add(recv)
+    db.flush()
+    db.refresh(recv)
+    return recv
+
+
+def receive_receivable(db: Session, recv_id: int, account_id: int):
+    recv = get_receivable(db, recv_id)
+    if recv.status == "received":
+        raise ValueError("Receivable is already received")
+
+    account = get_account(db, account_id)
+
+    transaction = models.Transaction(
+        account_id=account_id,
+        type="credit",
+        amount=recv.amount,
+        category=recv.category or "General",
+        description=recv.description or f"Payment from {recv.debtor}",
+        reference=f"receivable:{recv.id}",
+    )
+    account.balance += recv.amount
+    recv.status = "received"
+    recv.received_at = datetime.now(timezone.utc)
+
+    db.add(transaction)
+    db.flush()
+    db.refresh(transaction)
+    return recv, transaction
+
+
+def get_total_outstanding_receivable(db: Session):
+    result = db.execute(
+        select(func.coalesce(func.sum(models.Receivable.amount), 0))
+        .where(models.Receivable.status == "unreceived")
+    )
+    return result.scalar()
+
+
+def delete_receivable(db: Session, recv_id: int):
+    recv = get_receivable(db, recv_id)
+    if recv.status == "received":
+        raise ValueError("Cannot delete a received receivable")
+    db.delete(recv)
+    db.flush()

@@ -92,6 +92,9 @@
                     {% if debt.status == "unpaid" %}
                     <a href="/debts/{{ debt.id }}/settle" class="btn btn-sm btn-success">Pay</a>
                     {% endif %}
+                    <form action="/debts/{{ debt.id }}/delete" method="post" style="display:inline" onsubmit="return confirm('Delete this debt?')">
+                        <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+                    </form>
                 </td>
             </tr>
             {% endfor %}

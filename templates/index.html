@@ -35,20 +35,49 @@
         </div>
     </div>
     <div class="col-md-3 mb-2">
+        <div class="card h-100 {% if profit >= 0 %}text-bg-success{% else %}text-bg-danger{% endif %}">
+            <div class="card-body">
+                <h5 class="card-title">Profit</h5>
+                <p class="card-text fs-3">&#x20B9;{{ "%.2f"|format(profit) }}</p>
+                <small>Balance &minus; Capital</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-2">
         <div class="card h-100 {% if net_profit >= 0 %}text-bg-success{% else %}text-bg-danger{% endif %}">
             <div class="card-body">
                 <h5 class="card-title">Net Profit</h5>
                 <p class="card-text fs-3">&#x20B9;{{ "%.2f"|format(net_profit) }}</p>
-                <small>Total Balance &minus; Fixed Capital</small>
+                <small>Profit &minus; Debt</small>
             </div>
         </div>
     </div>
+</div>
+<div class="row mb-4">
     <div class="col-md-3 mb-2">
         <div class="card text-bg-danger h-100">
             <div class="card-body">
                 <h5 class="card-title">Outstanding Debt</h5>
                 <p class="card-text fs-3">&#x20B9;{{ "%.2f"|format(outstanding_debt) }}</p>
-                <small>Unpaid expenses</small>
+                <small>Money you owe</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-2">
+        <div class="card text-bg-warning h-100">
+            <div class="card-body">
+                <h5 class="card-title">Outstanding Receivable</h5>
+                <p class="card-text fs-3">&#x20B9;{{ "%.2f"|format(outstanding_receivable) }}</p>
+                <small>Money owed to you</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-2">
+        <div class="card h-100 {% if net_worth >= 0 %}text-bg-success{% else %}text-bg-danger{% endif %}">
+            <div class="card-body">
+                <h5 class="card-title">Net Worth</h5>
+                <p class="card-text fs-3">&#x20B9;{{ "%.2f"|format(net_worth) }}</p>
+                <small>Net Profit + Receivable</small>
             </div>
         </div>
     </div>

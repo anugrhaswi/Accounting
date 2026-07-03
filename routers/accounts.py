@@ -25,7 +25,7 @@ def create_account():
     try:
         crud.create_account(db, data)
     except Exception:
-        return render_template("account_form.html", error="An account with this name already exists."), 400
+        return render_template("account_form.html", error="Failed to create account. Please check the values."), 400
     return redirect("/", 303)
 
 

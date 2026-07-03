@@ -30,7 +30,7 @@ def create_category():
     except Exception:
         income_categories = crud.get_categories(db, cat_type="income")
         expense_categories = crud.get_categories(db, cat_type="expense")
-        return render_template("categories.html", income_categories=income_categories, expense_categories=expense_categories, error="A category with this name already exists."), 400
+        return render_template("categories.html", income_categories=income_categories, expense_categories=expense_categories, error="Failed to create category. Please check the values."), 400
     return redirect("/categories/", 303)
 
 

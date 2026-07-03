@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Receive Payment</h2>
+
+{% if error %}
+<div class="alert alert-danger">{{ error }}</div>
+{% endif %}
+
+<div class="card mb-4">
+    <div class="card-header">Receivable Details</div>
+    <div class="card-body">
+        <p><strong>Debtor:</strong> {{ recv.debtor }}</p>
+        <p><strong>Amount:</strong> &#x20B9;{{ "%.2f"|format(recv.amount) }}</p>
+        <p><strong>Category:</strong> {{ recv.category or "-" }}</p>
+        <p><strong>Description:</strong> {{ recv.description or "-" }}</p>
+    </div>
+</div>
+
+<form method="post" action="/receivables/{{ recv.id }}/receive">
+    <div class="mb-3">
+        <label class="form-label">Receive into Account</label>
+        <select name="account_id" class="form-select" required>
+            <option value="">-- Select Account --</option>
+            {% for account in accounts %}
+            <option value="{{ account.id }}">{{ account.name }} (&#x20B9;{{ "%.2f"|format(account.balance) }})</option>
+            {% endfor %}
+        </select>
+    </div>
+    <button type="submit" class="btn btn-success">Mark as Received</button>
+    <a href="/receivables/" class="btn btn-secondary">Cancel</a>
+</form>
+{% endblock %}

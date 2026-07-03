@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone, timedelta
 from flask import Blueprint, render_template, request
 from database import get_db
 import crud
@@ -24,11 +24,50 @@ def reports_page():
     if month < 1 or month > 12:
         month = now.month
 
-    monthly_overview = crud.get_monthly_overview(db)
     daily = crud.get_monthly_days(db, year, month)
+    monthly_overview = crud.get_monthly_overview(db)
+
+    total_balance = crud.get_total_balance(db)
+    fixed_capital = float(crud.get_setting(db, "fixed_capital", "0") or 0)
+    profit = total_balance - fixed_capital
+    outstanding_debt = crud.get_total_outstanding_debt(db)
+    net_profit = profit - outstanding_debt
+    outstanding_receivable = crud.get_total_outstanding_receivable(db)
+    reports_net_worth = net_profit + outstanding_receivable
 
     month_names = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun",
                    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
     years = list(range(now.year - 5, now.year + 1))
 
-    return render_template("reports.html", daily=daily, monthly=monthly_overview, selected_year=year, selected_month=month, selected_month_name=month_names[month], years=years, month_names=month_names)
+    return render_template("reports.html", daily=daily, monthly=monthly_overview,
+                           selected_year=year, selected_month=month,
+                           selected_month_name=month_names[month], years=years,
+                           month_names=month_names, profit=profit,
+                           outstanding_debt=outstanding_debt,
+                           net_profit=net_profit,
+                           outstanding_receivable=outstanding_receivable,
+                           reports_net_worth=reports_net_worth)
+
+
+@bp.route("/profits")
+def profits_page():
+    db = get_db()
+    crud.backfill_daily_profit_logs(db)
+    logs = crud.get_daily_profit_logs(db, limit=365)
+
+    logs_list = list(logs)
+    logs_list.reverse()
+    running = 0.0
+    logs_with_running = []
+    for entry in logs_list:
+        running += entry.profit
+        logs_with_running.append({
+            "date": entry.date.isoformat(),
+            "income": entry.income,
+            "expenses": entry.expenses,
+            "profit": entry.profit,
+            "running": running,
+        })
+    logs_with_running.reverse()
+
+    return render_template("profits.html", logs=logs_with_running)

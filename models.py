@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Text
+from sqlalchemy import Column, Integer, String, Float, DateTime, Date, ForeignKey, Text
 from sqlalchemy.orm import relationship
 from database import Base
 
@@ -58,6 +58,32 @@ class Debt(Base):
     status = Column(String(10), nullable=False, default="unpaid")
     created_at = Column(DateTime(timezone=True), default=_now)
     settled_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class Receivable(Base):
+    __tablename__ = "receivables"
+
+    id = Column(Integer, primary_key=True, index=True)
+    debtor = Column(String(200), nullable=False)
+    amount = Column(Float, nullable=False)
+    category = Column(String(50), nullable=True)
+    description = Column(Text, nullable=True)
+    due_date = Column(DateTime(timezone=True), nullable=True)
+    status = Column(String(10), nullable=False, default="unreceived")
+    created_at = Column(DateTime(timezone=True), default=_now)
+    received_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class DailyProfitLog(Base):
+    __tablename__ = "daily_profit_log"
+
+    id = Column(Integer, primary_key=True, index=True)
+    date = Column(Date, nullable=False, unique=True)
+    income = Column(Float, nullable=False, default=0.0)
+    expenses = Column(Float, nullable=False, default=0.0)
+    profit = Column(Float, nullable=False, default=0.0)
+    created_at = Column(DateTime(timezone=True), default=_now)
+    updated_at = Column(DateTime(timezone=True), default=_now, onupdate=_now)
 
 
 class Setting(Base):

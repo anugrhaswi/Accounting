@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Receivables</h2>
+
+{% if error %}
+<div class="alert alert-danger alert-dismissible fade show" role="alert">
+    {{ error }}
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+{% endif %}
+
+<div class="row mb-4">
+    <div class="col-md-4">
+        <div class="card text-bg-info h-100">
+            <div class="card-body">
+                <h5 class="card-title">Outstanding Receivable</h5>
+                <p class="card-text fs-3">&#x20B9;{{ "%.2f"|format(outstanding) }}</p>
+                <small>Money yet to be received</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header">Add Receivable</div>
+    <div class="card-body">
+        <form method="post" action="/receivables/" class="row g-3">
+            <div class="col-md-3">
+                <label class="form-label">Debtor</label>
+                <input type="text" name="debtor" class="form-control" required>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Amount</label>
+                <input type="number" name="amount" class="form-control" step="0.01" required>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Category</label>
+                <input type="text" name="category" class="form-control" placeholder="General">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Description</label>
+                <input type="text" name="description" class="form-control">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Due Date</label>
+                <input type="date" name="due_date" class="form-control">
+            </div>
+            <div class="col-12">
+                <button type="submit" class="btn btn-primary">Add Receivable</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<ul class="nav nav-tabs mb-3">
+    <li class="nav-item">
+        <a class="nav-link {% if selected_status == None %}active{% endif %}" href="/receivables/">All</a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link {% if selected_status == 'unreceived' %}active{% endif %}" href="/receivables/?status=unreceived">Unreceived</a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link {% if selected_status == 'received' %}active{% endif %}" href="/receivables/?status=received">Received</a>
+    </li>
+</ul>
+
+{% if receivables %}
+<div class="table-responsive">
+    <table class="table table-striped table-sm">
+        <thead class="table-dark">
+            <tr>
+                <th>Debtor</th>
+                <th>Amount</th>
+                <th>Category</th>
+                <th>Description</th>
+                <th>Due Date</th>
+                <th>Status</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in receivables %}
+            <tr>
+                <td><strong>{{ r.debtor }}</strong></td>
+                <td>&#x20B9;{{ "%.2f"|format(r.amount) }}</td>
+                <td>{{ r.category or "-" }}</td>
+                <td>{{ r.description or "-" }}</td>
+                <td>{{ r.due_date.strftime("%d-%b-%Y") if r.due_date else "-" }}</td>
+                <td>
+                    {% if r.status == "received" %}
+                    <span class="badge bg-success">RECEIVED</span>
+                    {% else %}
+                    <span class="badge bg-warning text-dark">UNRECEIVED</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if r.status == "unreceived" %}
+                    <a href="/receivables/{{ r.id }}/receive" class="btn btn-sm btn-success">Receive</a>
+                    {% endif %}
+                    <form action="/receivables/{{ r.id }}/delete" method="post" style="display:inline" onsubmit="return confirm('Delete this receivable?')">
+                        <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="alert alert-info">No receivables recorded yet.</div>
+{% endif %}
+{% endblock %}

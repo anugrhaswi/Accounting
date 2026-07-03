@@ -1,3 +1,5 @@
+from urllib.parse import quote
+
 from flask import Blueprint, redirect, render_template, request
 from database import get_db
 import crud
@@ -55,7 +57,20 @@ def settle_debt(debt_id):
         account_id = int(request.form["account_id"])
         crud.settle_debt(db, debt_id, account_id)
     except (ValueError, KeyError) as e:
-        debt = crud.get_debt(db, debt_id)
-        accounts = crud.get_accounts(db)
+        try:
+            debt = crud.get_debt(db, debt_id)
+            accounts = crud.get_accounts(db)
+        except ValueError:
+            return redirect("/debts/", 303)
         return render_template("debt_settle.html", debt=debt, accounts=accounts, error=str(e)), 400
+    return redirect("/debts/", 303)
+
+
+@bp.route("/<int:debt_id>/delete", methods=["POST"])
+def delete_debt(debt_id):
+    db = get_db()
+    try:
+        crud.delete_debt(db, debt_id)
+    except ValueError as e:
+        return redirect(f"/debts/?error={quote(str(e))}", 303)
     return redirect("/debts/", 303)
