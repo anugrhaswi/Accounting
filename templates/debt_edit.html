@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Edit Debt</h2>
+
+{% if error %}
+<div class="alert alert-danger">{{ error }}</div>
+{% endif %}
+
+<div class="card mb-4">
+    <div class="card-header">Status: {% if debt.status == "paid" %}<span class="badge bg-success">Paid</span>{% else %}<span class="badge bg-warning">Unpaid</span>{% endif %}</div>
+    <div class="card-body">
+        <form method="POST" action="/debts/{{ debt.id }}/edit">
+            <div class="mb-3">
+                <label class="form-label">Creditor</label>
+                <input type="text" name="creditor" class="form-control" required value="{{ debt.creditor }}">
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Amount</label>
+                <input type="number" step="0.01" name="amount" class="form-control" required value="{{ '%.2f'|format(debt.amount) }}" {% if debt.status == "paid" %}readonly{% endif %}>
+                {% if debt.status == "paid" %}<small class="text-muted">Amount locked — debt is already paid.</small>{% endif %}
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Category</label>
+                <input type="text" name="category" class="form-control" value="{{ debt.category or '' }}">
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Description</label>
+                <textarea name="description" class="form-control" rows="2">{{ debt.description or '' }}</textarea>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Due Date</label>
+                <input type="date" name="due_date" class="form-control" value="{{ debt.due_date.strftime('%Y-%m-%d') if debt.due_date else '' }}" {% if debt.status == "paid" %}readonly{% endif %}>
+            </div>
+            <button type="submit" class="btn btn-primary">Save Changes</button>
+            <a href="/debts/" class="btn btn-secondary">Cancel</a>
+        </form>
+    </div>
+</div>
+{% endblock %}

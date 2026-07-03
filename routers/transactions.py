@@ -70,6 +70,61 @@ def transfer_money():
     return redirect("/", 303)
 
 
+@bp.route("/<int:transaction_id>/edit")
+def edit_transaction_form(transaction_id):
+    db = get_db()
+    try:
+        txn = crud.get_transaction(db, transaction_id)
+    except ValueError:
+        return redirect("/logs", 303)
+    accounts = crud.get_accounts(db)
+    income_categories = crud.get_categories(db, cat_type="income")
+    expense_categories = crud.get_categories(db, cat_type="expense")
+    return render_template("transaction_form.html", accounts=accounts,
+                           income_categories=income_categories,
+                           expense_categories=expense_categories, txn=txn)
+
+
+@bp.route("/<int:transaction_id>/edit", methods=["POST"])
+def edit_transaction(transaction_id):
+    db = get_db()
+    form = request.form
+    try:
+        data = schemas.TransactionCreate(
+            account_id=int(form["account_id"]),
+            type=form["type"],
+            amount=float(form["amount"]),
+            category=form.get("category") or "General",
+            description=form.get("description") or None,
+            reference=form.get("reference") or None,
+        )
+        crud.update_transaction(db, transaction_id, data)
+    except ValueError as e:
+        accounts = crud.get_accounts(db)
+        income_categories = crud.get_categories(db, cat_type="income")
+        expense_categories = crud.get_categories(db, cat_type="expense")
+        try:
+            txn = crud.get_transaction(db, transaction_id)
+        except ValueError:
+            return redirect("/logs", 303)
+        return render_template("transaction_form.html", accounts=accounts,
+                               income_categories=income_categories,
+                               expense_categories=expense_categories, txn=txn, error=str(e)), 400
+    except Exception:
+        accounts = crud.get_accounts(db)
+        income_categories = crud.get_categories(db, cat_type="income")
+        expense_categories = crud.get_categories(db, cat_type="expense")
+        try:
+            txn = crud.get_transaction(db, transaction_id)
+        except ValueError:
+            return redirect("/logs", 303)
+        return render_template("transaction_form.html", accounts=accounts,
+                               income_categories=income_categories,
+                               expense_categories=expense_categories, txn=txn,
+                               error="Invalid input. Please check the form values."), 400
+    return redirect("/logs", 303)
+
+
 @bp.route("/<int:transaction_id>/delete", methods=["POST"])
 def delete_transaction(transaction_id):
     db = get_db()

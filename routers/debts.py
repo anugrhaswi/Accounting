@@ -67,6 +67,38 @@ def settle_debt(debt_id):
     return redirect("/debts/", 303)
 
 
+@bp.route("/<int:debt_id>/edit")
+def edit_debt_form(debt_id):
+    db = get_db()
+    try:
+        debt = crud.get_debt(db, debt_id)
+    except ValueError:
+        return redirect("/debts/", 303)
+    return render_template("debt_edit.html", debt=debt)
+
+
+@bp.route("/<int:debt_id>/edit", methods=["POST"])
+def edit_debt(debt_id):
+    db = get_db()
+    form = request.form
+    try:
+        data = schemas.DebtCreate(
+            creditor=form["creditor"],
+            amount=float(form["amount"]),
+            category=form.get("category") or "General",
+            description=form.get("description") or None,
+            due_date=form.get("due_date") or None,
+        )
+        crud.update_debt(db, debt_id, data)
+    except Exception:
+        try:
+            debt = crud.get_debt(db, debt_id)
+        except ValueError:
+            return redirect("/debts/", 303)
+        return render_template("debt_edit.html", debt=debt, error="Invalid input. Please check the form values."), 400
+    return redirect("/debts/", 303)
+
+
 @bp.route("/<int:debt_id>/delete", methods=["POST"])
 def delete_debt(debt_id):
     db = get_db()

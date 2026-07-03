@@ -71,6 +71,38 @@ def receive_receivable(recv_id):
     return redirect("/receivables/", 303)
 
 
+@bp.route("/<int:recv_id>/edit")
+def edit_receivable_form(recv_id):
+    db = get_db()
+    try:
+        recv = crud.get_receivable(db, recv_id)
+    except ValueError:
+        return redirect("/receivables/", 303)
+    return render_template("receivable_edit.html", recv=recv)
+
+
+@bp.route("/<int:recv_id>/edit", methods=["POST"])
+def edit_receivable(recv_id):
+    db = get_db()
+    form = request.form
+    try:
+        data = schemas.ReceivableCreate(
+            debtor=form["debtor"],
+            amount=float(form["amount"]),
+            category=form.get("category") or "General",
+            description=form.get("description") or None,
+            due_date=form.get("due_date") or None,
+        )
+        crud.update_receivable(db, recv_id, data)
+    except Exception:
+        try:
+            recv = crud.get_receivable(db, recv_id)
+        except ValueError:
+            return redirect("/receivables/", 303)
+        return render_template("receivable_edit.html", recv=recv, error="Invalid input. Please check the form values."), 400
+    return redirect("/receivables/", 303)
+
+
 @bp.route("/<int:recv_id>/delete", methods=["POST"])
 def delete_receivable(recv_id):
     db = get_db()

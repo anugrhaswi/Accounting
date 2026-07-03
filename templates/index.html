@@ -154,6 +154,7 @@
                 <td>&#x20B9;{{ "%.2f"|format(account.balance) }}</td>
                 <td>
                     <a href="/transactions/new?account_id={{ account.id }}" class="btn btn-sm btn-success">+ Add</a>
+                    <a href="/accounts/{{ account.id }}/edit" class="btn btn-sm btn-outline-primary">Edit</a>
                     <a href="/logs?account_id={{ account.id }}" class="btn btn-sm btn-info">Logs</a>
                     <form action="/accounts/{{ account.id }}/delete" method="post" style="display:inline" onsubmit="return confirm('Delete this account? Accounts with existing transactions cannot be deleted.')">
                         <button type="submit" class="btn btn-sm btn-danger">Delete</button>
@@ -199,6 +200,9 @@
                 <td>&#x20B9;{{ "%.2f"|format(txn.amount) }}</td>
                 <td>{{ txn.description or "-" }}</td>
                 <td>
+                    {% if not (txn.category == "Transfer" and txn.reference and txn.reference.startswith("xfer:")) %}
+                    <a href="/transactions/{{ txn.id }}/edit" class="btn btn-sm btn-outline-primary">Edit</a>
+                    {% endif %}
                     <form action="/transactions/{{ txn.id }}/delete" method="post" style="display:inline" onsubmit="return confirm('Undo this transaction? This will reverse the balance change.')">
                         <button type="submit" class="btn btn-sm btn-outline-danger">Undo</button>
                     </form>

@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Edit Receivable</h2>
+
+{% if error %}
+<div class="alert alert-danger">{{ error }}</div>
+{% endif %}
+
+<div class="card mb-4">
+    <div class="card-header">Status: {% if recv.status == "received" %}<span class="badge bg-success">Received</span>{% else %}<span class="badge bg-warning text-dark">Unreceived</span>{% endif %}</div>
+    <div class="card-body">
+        <form method="POST" action="/receivables/{{ recv.id }}/edit">
+            <div class="mb-3">
+                <label class="form-label">Debtor</label>
+                <input type="text" name="debtor" class="form-control" required value="{{ recv.debtor }}">
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Amount</label>
+                <input type="number" step="0.01" name="amount" class="form-control" required value="{{ '%.2f'|format(recv.amount) }}" {% if recv.status == "received" %}readonly{% endif %}>
+                {% if recv.status == "received" %}<small class="text-muted">Amount locked — already received.</small>{% endif %}
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Category</label>
+                <input type="text" name="category" class="form-control" value="{{ recv.category or '' }}">
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Description</label>
+                <input type="text" name="description" class="form-control" value="{{ recv.description or '' }}">
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Due Date</label>
+                <input type="date" name="due_date" class="form-control" value="{{ recv.due_date.strftime('%Y-%m-%d') if recv.due_date else '' }}" {% if recv.status == "received" %}readonly{% endif %}>
+            </div>
+            <button type="submit" class="btn btn-primary">Save Changes</button>
+            <a href="/receivables/" class="btn btn-secondary">Cancel</a>
+        </form>
+    </div>
+</div>
+{% endblock %}

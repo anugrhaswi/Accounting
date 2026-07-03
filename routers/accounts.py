@@ -29,6 +29,36 @@ def create_account():
     return redirect("/", 303)
 
 
+@bp.route("/<int:account_id>/edit")
+def edit_account_form(account_id):
+    db = get_db()
+    try:
+        account = crud.get_account(db, account_id)
+    except ValueError:
+        return redirect("/", 303)
+    return render_template("account_form.html", account=account)
+
+
+@bp.route("/<int:account_id>/edit", methods=["POST"])
+def edit_account(account_id):
+    db = get_db()
+    form = request.form
+    try:
+        data = schemas.AccountCreate(
+            name=form["name"],
+            type=form.get("type", "General"),
+            description=form.get("description") or None,
+        )
+        crud.update_account(db, account_id, data)
+    except Exception:
+        try:
+            account = crud.get_account(db, account_id)
+        except ValueError:
+            return redirect("/", 303)
+        return render_template("account_form.html", account=account, error="Failed to update account. Please check the values."), 400
+    return redirect("/", 303)
+
+
 @bp.route("/<int:account_id>/delete", methods=["POST"])
 def delete_account(account_id):
     db = get_db()

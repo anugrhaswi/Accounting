@@ -89,6 +89,7 @@
                 </td>
                 <td>{{ debt.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
                 <td>
+                    <a href="/debts/{{ debt.id }}/edit" class="btn btn-sm btn-outline-primary">Edit</a>
                     {% if debt.status == "unpaid" %}
                     <a href="/debts/{{ debt.id }}/settle" class="btn btn-sm btn-success">Pay</a>
                     {% endif %}

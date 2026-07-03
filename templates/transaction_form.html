@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 {% block content %}
-<h2>Add Transaction</h2>
-<form method="post" action="/transactions/" class="row g-3">
+<h2>{% if txn %}Edit Transaction{% else %}Add Transaction{% endif %}</h2>
+<form method="post" action="{% if txn %}/transactions/{{ txn.id }}/edit{% else %}/transactions/{% endif %}" class="row g-3">
     <div class="col-md-6">
         <label class="form-label">Account</label>
         <select name="account_id" class="form-select" required>
             <option value="">Select Account</option>
             {% for account in accounts %}
-            <option value="{{ account.id }}" {% if selected_account_id == account.id %}selected{% endif %}>
+            <option value="{{ account.id }}" {% if txn and txn.account_id == account.id %}selected{% elif not txn and selected_account_id == account.id %}selected{% endif %}>
                 {{ account.name }} (&#x20B9;{{ "%.2f"|format(account.balance) }})
             </option>
             {% endfor %}
@@ -16,29 +16,38 @@
     <div class="col-md-4">
         <label class="form-label">Type</label>
         <select name="type" class="form-select" required>
-            <option value="credit">Credit (Money In)</option>
-            <option value="debit">Debit (Money Out)</option>
+            <option value="credit" {% if txn and txn.type == "credit" %}selected{% endif %}>Credit (Money In)</option>
+            <option value="debit" {% if txn and txn.type == "debit" %}selected{% endif %}>Debit (Money Out)</option>
         </select>
     </div>
     <div class="col-md-4">
         <label class="form-label">Amount (&#x20B9;)</label>
-        <input type="number" name="amount" class="form-control" step="0.01" min="0.01" required>
+        <input type="number" name="amount" class="form-control" step="0.01" min="0.01" required value="{{ '%.2f'|format(txn.amount) if txn else '' }}">
     </div>
     <div class="col-md-6">
         <label class="form-label">Category</label>
         <select name="category" class="form-select">
-            <option value="General" selected>General</option>
+            {% set ns = namespace(found=false) %}
+            {% for cat in [{"name":"General"}] + (income_categories or []) + (expense_categories or []) %}
+            {% if txn and txn.category == cat.name %}{% set ns.found = true %}{% endif %}
+            {% endfor %}
+            {% if txn and txn.category != "General" and txn.category != "Transfer" and not ns.found %}
+            <optgroup label="Current">
+                <option value="{{ txn.category }}" selected>{{ txn.category }}</option>
+            </optgroup>
+            {% endif %}
+            <option value="General" {% if not txn or txn.category == "General" %}selected{% endif %}>General</option>
             {% if income_categories %}
             <optgroup label="Income">
                 {% for cat in income_categories %}
-                <option value="{{ cat.name }}">{{ cat.name }}</option>
+                <option value="{{ cat.name }}" {% if txn and txn.category == cat.name %}selected{% endif %}>{{ cat.name }}</option>
                 {% endfor %}
             </optgroup>
             {% endif %}
             {% if expense_categories %}
             <optgroup label="Expense">
                 {% for cat in expense_categories %}
-                <option value="{{ cat.name }}">{{ cat.name }}</option>
+                <option value="{{ cat.name }}" {% if txn and txn.category == cat.name %}selected{% endif %}>{{ cat.name }}</option>
                 {% endfor %}
             </optgroup>
             {% endif %}
@@ -46,15 +55,15 @@
     </div>
     <div class="col-md-6">
         <label class="form-label">Description (optional)</label>
-        <input type="text" name="description" class="form-control" placeholder="What is this for?">
+        <input type="text" name="description" class="form-control" placeholder="What is this for?" value="{{ txn.description or '' }}">
     </div>
     <div class="col-md-4">
         <label class="form-label">Reference (optional)</label>
-        <input type="text" name="reference" class="form-control" placeholder="Bill/UTR/Invoice no.">
+        <input type="text" name="reference" class="form-control" placeholder="Bill/UTR/Invoice no." value="{{ txn.reference or '' }}">
     </div>
     <div class="col-12">
-        <button type="submit" class="btn btn-primary">Save Transaction</button>
-        <a href="/" class="btn btn-outline-secondary">Cancel</a>
+        <button type="submit" class="btn btn-primary">{% if txn %}Update Transaction{% else %}Save Transaction{% endif %}</button>
+        <a href="{% if txn %}/logs{% else %}/{% endif %}" class="btn btn-outline-secondary">Cancel</a>
     </div>
 </form>
 {% if error %}

@@ -94,6 +94,7 @@
                     {% endif %}
                 </td>
                 <td>
+                    <a href="/receivables/{{ r.id }}/edit" class="btn btn-sm btn-outline-primary">Edit</a>
                     {% if r.status == "unreceived" %}
                     <a href="/receivables/{{ r.id }}/receive" class="btn btn-sm btn-success">Receive</a>
                     {% endif %}

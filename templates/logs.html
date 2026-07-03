@@ -62,6 +62,9 @@
                 <td>{{ txn.description or "-" }}</td>
                 <td>{{ txn.reference or "-" }}</td>
                 <td>
+                    {% if not (txn.category == "Transfer" and txn.reference and txn.reference.startswith("xfer:")) %}
+                    <a href="/transactions/{{ txn.id }}/edit" class="btn btn-sm btn-outline-primary">Edit</a>
+                    {% endif %}
                     <form action="/transactions/{{ txn.id }}/delete" method="post" style="display:inline" onsubmit="return confirm('Undo this transaction? This will reverse the balance change.')">
                         <button type="submit" class="btn btn-sm btn-outline-danger">Undo</button>
                     </form>

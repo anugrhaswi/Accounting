@@ -648,3 +648,121 @@ def delete_receivable(db: Session, recv_id: int):
         raise ValueError("Cannot delete a received receivable")
     db.delete(recv)
     db.flush()
+
+
+def update_account(db: Session, account_id: int, data: schemas.AccountCreate):
+    account = get_account(db, account_id)
+    account.name = data.name
+    account.type = data.type
+    account.description = data.description
+    db.flush()
+    db.refresh(account)
+    return account
+
+
+def update_transaction(db: Session, transaction_id: int, data: schemas.TransactionCreate):
+    txn = get_transaction(db, transaction_id)
+
+    if txn.category == "Transfer" and txn.reference and txn.reference.startswith("xfer:"):
+        raise ValueError("Cannot edit transfer transactions")
+    if txn.reference:
+        if txn.reference.startswith("debt:"):
+            raise ValueError("Cannot edit debt payment transactions directly")
+        if txn.reference.startswith("receivable:"):
+            raise ValueError("Cannot edit receivable receipt transactions directly")
+
+    if data.category == "Transfer" and not (txn.reference and txn.reference.startswith("xfer:")):
+        raise ValueError("Cannot set category to Transfer on a non-transfer transaction")
+
+    if data.reference:
+        if data.reference.startswith("debt:") or data.reference.startswith("receivable:") or data.reference.startswith("xfer:"):
+            raise ValueError("Invalid reference format")
+
+    old_account = txn.account
+    old_type = txn.type
+    old_amount = txn.amount
+
+    if old_type == "credit":
+        if old_account.balance < old_amount:
+            raise ValueError("Cannot undo: insufficient balance to reverse credit")
+        old_account.balance -= old_amount
+    else:
+        old_account.balance += old_amount
+
+    if data.account_id != txn.account_id:
+        new_account = get_account(db, data.account_id)
+    else:
+        new_account = old_account
+
+    if data.type == "debit" and new_account.balance < data.amount:
+        raise ValueError("Insufficient balance")
+
+    if data.type == "credit":
+        new_account.balance += data.amount
+    else:
+        new_account.balance -= data.amount
+
+    txn.account_id = data.account_id
+    txn.type = data.type
+    txn.amount = data.amount
+    txn.category = data.category
+    txn.description = data.description
+    txn.reference = data.reference
+
+    db.flush()
+    db.refresh(txn)
+    return txn
+
+
+def update_debt(db: Session, debt_id: int, data: schemas.DebtCreate):
+    debt = get_debt(db, debt_id)
+
+    if debt.status == "paid":
+        debt.creditor = data.creditor
+        debt.category = data.category
+        debt.description = data.description
+    else:
+        due = None
+        if data.due_date:
+            try:
+                due = datetime.fromisoformat(data.due_date)
+                if due.tzinfo is None:
+                    due = due.replace(tzinfo=timezone.utc)
+            except (ValueError, TypeError):
+                pass
+        debt.creditor = data.creditor
+        debt.amount = data.amount
+        debt.category = data.category
+        debt.description = data.description
+        debt.due_date = due
+
+    db.flush()
+    db.refresh(debt)
+    return debt
+
+
+def update_receivable(db: Session, recv_id: int, data: schemas.ReceivableCreate):
+    recv = get_receivable(db, recv_id)
+
+    if recv.status == "received":
+        recv.debtor = data.debtor
+        recv.category = data.category
+        recv.description = data.description
+    else:
+        due = None
+        if data.due_date:
+            try:
+                due = datetime.fromisoformat(data.due_date)
+                if due.tzinfo is None:
+                    due = due.replace(tzinfo=timezone.utc)
+            except (ValueError, TypeError):
+                pass
+        recv.debtor = data.debtor
+        recv.amount = data.amount
+        recv.category = data.category
+        recv.description = data.description
+        recv.due_date = due
+
+    db.flush()
+    db.refresh(recv)
+    return recv
