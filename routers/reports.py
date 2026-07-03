@@ -65,6 +65,12 @@ def profits_page():
             "date": entry.date.isoformat(),
             "income": entry.income,
             "expenses": entry.expenses,
+            "new_debts": entry.new_debts,
+            "settled_debts": entry.settled_debts,
+            "new_receivables": entry.new_receivables,
+            "received_receivables": entry.received_receivables,
+            "capital": entry.capital,
+            "capital_delta": entry.capital_delta,
             "profit": entry.profit,
             "running": running,
         })

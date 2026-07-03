@@ -11,10 +11,11 @@ bp = Blueprint("debts", __name__, url_prefix="/debts")
 @bp.route("/")
 def list_debts():
     db = get_db()
+    error = request.args.get("error")
     status = request.args.get("status")
     debts = crud.get_debts(db, status=status)
     outstanding = crud.get_total_outstanding_debt(db)
-    return render_template("debts.html", debts=debts, outstanding=outstanding, selected_status=status)
+    return render_template("debts.html", debts=debts, outstanding=outstanding, selected_status=status, error=error)
 
 
 @bp.route("/", methods=["POST"])

@@ -11,11 +11,12 @@ bp = Blueprint("receivables", __name__, url_prefix="/receivables")
 @bp.route("/")
 def list_receivables():
     db = get_db()
+    error = request.args.get("error")
     status = request.args.get("status")
     receivables = crud.get_receivables(db, status=status)
     outstanding = crud.get_total_outstanding_receivable(db)
     return render_template("receivables.html", receivables=receivables,
-                           outstanding=outstanding, selected_status=status)
+                           outstanding=outstanding, selected_status=status, error=error)
 
 
 @bp.route("/", methods=["POST"])
