@@ -3,6 +3,8 @@
 Debt lifecycle: create (unpaid) → receive loan into an account → settle from an account (paid).
 """
 
+import math
+import traceback
 from urllib.parse import quote
 
 from flask import Blueprint, redirect, render_template, request
@@ -32,6 +34,8 @@ def create_debt():
     form = request.form
     try:
         amount = float(form["amount"])
+        if not math.isfinite(amount) or amount <= 0:
+            raise ValueError
         data = schemas.DebtCreate(
             creditor=form["creditor"].strip(),
             amount=amount,
@@ -61,8 +65,6 @@ def create_debt():
                        "category": form.get("category", ""), "description": form.get("description", ""),
                        "due_date": form.get("due_date", "")}
         return render_template("debts.html", debts=debts, outstanding=outstanding, error="Invalid input. Please check the form values.", form_values=form_values), 400
-    try: crud.backfill_daily_profit_logs(db)
-    except Exception as e: print(f"backfill error: {e}")
     return redirect("/debts/", 303)
 
 
@@ -75,6 +77,8 @@ def receive_loan_form(debt_id):
     except ValueError:
         return redirect("/debts/", 303)
     if debt.status == "paid":
+        return redirect("/debts/", 303)
+    if debt.received_at:
         return redirect("/debts/", 303)
     accounts = crud.get_accounts(db)
     return render_template("debt_receive.html", debt=debt, accounts=accounts)
@@ -102,6 +106,8 @@ def receive_loan(debt_id):
         except ValueError:
             return redirect("/debts/", 303)
         return render_template("debt_receive.html", debt=debt, accounts=accounts, error=str(e)), 400
+    try: crud.backfill_daily_profit_logs(db)
+    except Exception: traceback.print_exc()
     return redirect("/debts/", 303)
 
 
@@ -142,7 +148,7 @@ def settle_debt(debt_id):
             return redirect("/debts/", 303)
         return render_template("debt_settle.html", debt=debt, accounts=accounts, error=str(e)), 400
     try: crud.backfill_daily_profit_logs(db)
-    except Exception as e: print(f"backfill error: {e}")
+    except Exception: traceback.print_exc()
     return redirect("/debts/", 303)
 
 
@@ -193,8 +199,6 @@ def edit_debt(debt_id):
         except ValueError:
             return redirect("/debts/", 303)
         return render_template("debt_edit.html", debt=debt, error="Invalid input. Please check the form values."), 400
-    try: crud.backfill_daily_profit_logs(db)
-    except Exception as e: print(f"backfill error: {e}")
     return redirect("/debts/", 303)
 
 
@@ -206,6 +210,4 @@ def delete_debt(debt_id):
         crud.delete_debt(db, debt_id)
     except ValueError as e:
         return redirect(f"/debts/?error={quote(str(e))}", 303)
-    try: crud.backfill_daily_profit_logs(db)
-    except Exception as e: print(f"backfill error: {e}")
     return redirect("/debts/", 303)

@@ -101,7 +101,7 @@
 
 <h4>Overall Summary</h4>
 <div class="row mb-4">
-    <div class="col-md-4 mb-2">
+    <div class="col-md-3 mb-2">
         <div class="card h-100 {% if profit > 0 %}text-bg-success{% elif profit < 0 %}text-bg-danger{% else %}text-bg-secondary{% endif %}">
             <div class="card-body">
                 <h5 class="card-title">Profit</h5>
@@ -110,7 +110,16 @@
             </div>
         </div>
     </div>
-    <div class="col-md-4 mb-2">
+    <div class="col-md-3 mb-2">
+        <div class="card text-bg-danger h-100">
+            <div class="card-body">
+                <h5 class="card-title">Outstanding Debt</h5>
+                <p class="card-text fs-3">&#x20B9;{{ "%.2f"|format(outstanding_debt) }}</p>
+                <small>Money you owe</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-2">
         <div class="card text-bg-warning h-100">
             <div class="card-body">
                 <h5 class="card-title">Outstanding Receivable</h5>
@@ -119,7 +128,7 @@
             </div>
         </div>
     </div>
-    <div class="col-md-4 mb-2">
+    <div class="col-md-3 mb-2">
         <div class="card h-100 {% if reports_net_worth > 0 %}text-bg-success{% elif reports_net_worth < 0 %}text-bg-danger{% else %}text-bg-secondary{% endif %}">
             <div class="card-body">
                 <h5 class="card-title">Net Worth</h5>

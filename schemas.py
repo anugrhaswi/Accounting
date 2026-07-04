@@ -4,6 +4,7 @@ Each dataclass mirrors a form submission and validates via __post_init__.
 Values are parsed from request.form (application/x-www-form-urlencoded).
 """
 
+import math
 from dataclasses import dataclass, asdict
 from typing import Optional
 
@@ -14,6 +15,10 @@ class AccountCreate:
     name: str
     type: str = "General"
     description: Optional[str] = None
+
+    def __post_init__(self):
+        if not self.name or not self.name.strip():
+            raise ValueError("name is required")
 
 
 @dataclass
@@ -31,10 +36,12 @@ class TransactionCreate:
     reference: Optional[str] = None
 
     def __post_init__(self):
+        if not isinstance(self.account_id, int) or self.account_id <= 0:
+            raise ValueError("account_id must be a positive integer")
         if self.type not in ("credit", "debit", "loan", "repayment"):
             raise ValueError("type must be 'credit', 'debit', 'loan', or 'repayment'")
-        if self.amount <= 0:
-            raise ValueError("amount must be > 0")
+        if not math.isfinite(self.amount) or self.amount <= 0:
+            raise ValueError("amount must be a finite positive number")
 
 
 @dataclass
@@ -50,8 +57,10 @@ class TransferCreate:
     description: Optional[str] = None
 
     def __post_init__(self):
-        if self.amount <= 0:
-            raise ValueError("amount must be > 0")
+        if self.from_account_id == self.to_account_id:
+            raise ValueError("from_account_id and to_account_id must be different")
+        if not math.isfinite(self.amount) or self.amount <= 0:
+            raise ValueError("amount must be a finite positive number")
 
 
 @dataclass
@@ -61,6 +70,8 @@ class CategoryCreate:
     type: str
 
     def __post_init__(self):
+        if not self.name or not self.name.strip():
+            raise ValueError("name is required")
         if self.type not in ("income", "expense"):
             raise ValueError("type must be 'income' or 'expense'")
 
@@ -78,8 +89,10 @@ class DebtCreate:
     due_date: Optional[str] = None
 
     def __post_init__(self):
-        if self.amount <= 0:
-            raise ValueError("amount must be > 0")
+        if not self.creditor or not self.creditor.strip():
+            raise ValueError("creditor is required")
+        if not math.isfinite(self.amount) or self.amount <= 0:
+            raise ValueError("amount must be a finite positive number")
 
 
 @dataclass
@@ -95,5 +108,7 @@ class ReceivableCreate:
     due_date: Optional[str] = None
 
     def __post_init__(self):
-        if self.amount <= 0:
-            raise ValueError("amount must be > 0")
+        if not self.debtor or not self.debtor.strip():
+            raise ValueError("debtor is required")
+        if not math.isfinite(self.amount) or self.amount <= 0:
+            raise ValueError("amount must be a finite positive number")

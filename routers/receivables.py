@@ -3,6 +3,8 @@
 Receivable lifecycle: create (unreceived) → receive payment into an account (received).
 """
 
+import math
+import traceback
 from urllib.parse import quote
 
 from flask import Blueprint, redirect, render_template, request
@@ -33,6 +35,8 @@ def create_receivable():
     form = request.form
     try:
         amount = float(form["amount"])
+        if not math.isfinite(amount) or amount <= 0:
+            raise ValueError
         data = schemas.ReceivableCreate(
             debtor=form["debtor"].strip(),
             amount=amount,
@@ -67,8 +71,6 @@ def create_receivable():
         return render_template("receivables.html", receivables=receivables,
                                outstanding=outstanding,
                                error="Invalid input. Please check the form values.", form_values=form_values), 400
-    try: crud.backfill_daily_profit_logs(db)
-    except Exception as e: print(f"backfill error: {e}")
     return redirect("/receivables/", 303)
 
 
@@ -111,7 +113,7 @@ def receive_receivable(recv_id):
         return render_template("receivable_receive.html", recv=recv,
                                accounts=accounts, error=str(e)), 400
     try: crud.backfill_daily_profit_logs(db)
-    except Exception as e: print(f"backfill error: {e}")
+    except Exception: traceback.print_exc()
     return redirect("/receivables/", 303)
 
 
@@ -161,8 +163,6 @@ def edit_receivable(recv_id):
         except ValueError:
             return redirect("/receivables/", 303)
         return render_template("receivable_edit.html", recv=recv, error="Invalid input. Please check the form values."), 400
-    try: crud.backfill_daily_profit_logs(db)
-    except Exception as e: print(f"backfill error: {e}")
     return redirect("/receivables/", 303)
 
 
@@ -174,6 +174,4 @@ def delete_receivable(recv_id):
         crud.delete_receivable(db, recv_id)
     except ValueError as e:
         return redirect(f"/receivables/?error={quote(str(e))}", 303)
-    try: crud.backfill_daily_profit_logs(db)
-    except Exception as e: print(f"backfill error: {e}")
     return redirect("/receivables/", 303)

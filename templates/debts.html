@@ -92,12 +92,16 @@
                 <td>
                     <a href="/debts/{{ debt.id }}/edit" class="btn btn-sm btn-outline-primary">Edit</a>
                     {% if debt.status == "unpaid" %}
+                    {% if not debt.received_at %}
                     <a href="/debts/{{ debt.id }}/receive" class="btn btn-sm btn-info">Receive</a>
+                    {% endif %}
                     <a href="/debts/{{ debt.id }}/settle" class="btn btn-sm btn-success">Pay</a>
                     {% endif %}
-                    <form action="/debts/{{ debt.id }}/delete" method="post" style="display:inline" onsubmit="return confirm('Delete this debt?')">
+                     {% if debt.status != "paid" %}
+                     <form action="/debts/{{ debt.id }}/delete" method="post" style="display:inline" onsubmit="return confirm('Delete this debt?')">
                         <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
                     </form>
+                    {% endif %}
                 </td>
             </tr>
             {% endfor %}

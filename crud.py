@@ -185,6 +185,9 @@ def delete_transaction(db: Session, transaction_id: int):
             debt = db.get(models.Debt, debt_id)
             if debt:
                 if txn.type == "loan":
+                    # Block deleting a loan if the debt has already been repaid
+                    if debt.status == "paid":
+                        raise ValueError("Cannot delete loan transaction: debt is paid. Delete the repayment first.")
                     debt.received_at = None
                 elif txn.type == "repayment" and debt.status == "paid":
                     debt.status = "unpaid"
@@ -461,28 +464,20 @@ def get_daily_profit_logs(db: Session, limit: int = 365):
 def backfill_daily_profit_logs(db: Session):
     """Fill or update daily profit log entries from the first transaction date to today.
 
-    Skips days with no activity. Iterates day by day calling update_daily_profit_log.
+    Always recalculates from the first transaction to today so that historical
+    edits/deletions are reflected. Iterates day by day calling update_daily_profit_log.
     """
-    today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    today = datetime.now(timezone).replace(hour=0, minute=0, second=0, microsecond=0)
 
-    last_log = db.execute(
-        select(func.max(models.DailyProfitLog.date))
+    first_txn = db.execute(
+        select(func.date(func.min(models.Transaction.timestamp)))
     ).scalar()
-    if last_log:
-        cursor = datetime.combine(last_log, datetime.min.time()).replace(tzinfo=timezone.utc)
-        cursor += timedelta(days=1)
-        if cursor > today:
-            return
+    if not first_txn:
+        return
+    if isinstance(first_txn, date):
+        cursor = datetime.combine(first_txn, datetime.min.time()).replace(tzinfo=timezone.utc)
     else:
-        first_txn = db.execute(
-            select(func.date(func.min(models.Transaction.timestamp)))
-        ).scalar()
-        if not first_txn:
-            return
-        if isinstance(first_txn, date):
-            cursor = datetime.combine(first_txn, datetime.min.time()).replace(tzinfo=timezone.utc)
-        else:
-            cursor = datetime.strptime(first_txn, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        cursor = datetime.strptime(first_txn, "%Y-%m-%d").replace(tzinfo=timezone.utc)
 
     while cursor <= today:
         update_daily_profit_log(db, cursor)
@@ -497,7 +492,8 @@ def get_min_transaction_year(db: Session):
         .order_by(models.Transaction.timestamp)
         .limit(1)
     )
-    return int(result.scalar()) if result.scalar() else None
+    year = result.scalar()
+    return int(year) if year is not None else None
 
 
 def get_monthly_days(db: Session, year: int, month: int):
@@ -562,7 +558,7 @@ def get_monthly_overview(db: Session):
 
     return [
         {"month": m, "income": v["income"], "expenses": v["expenses"], "profit": v["income"] - v["expenses"]}
-        for m, v in sorted(monthly.items(), reverse=True)
+        for m, v in monthly.items()
     ]
 
 
@@ -776,6 +772,13 @@ def delete_receivable(db: Session, recv_id: int):
 def update_account(db: Session, account_id: int, data: schemas.AccountCreate):
     """Update an account's name, type, and description."""
     account = get_account(db, account_id)
+    # Pre-empt duplicate name collisions before flush
+    if data.name != account.name:
+        existing = db.execute(
+            select(models.Account).where(models.Account.name == data.name)
+        ).scalar_one_or_none()
+        if existing:
+            raise ValueError("An account with that name already exists")
     account.name = data.name
     account.type = data.type
     account.description = data.description
@@ -797,17 +800,25 @@ def update_transaction(db: Session, transaction_id: int, data: schemas.Transacti
     txn = get_transaction(db, transaction_id)
 
     # Block editing of transfer transactions (must delete and recreate)
-    if txn.category == "Transfer" and txn.reference and txn.reference.startswith("xfer:"):
+    if txn.category == "Transfer":
         raise ValueError("Cannot edit transfer transactions")
     # Block setting Transfer on non-transfer transactions
-    if data.category == "Transfer" and not (txn.reference and txn.reference.startswith("xfer:")):
+    if data.category == "Transfer":
         raise ValueError("Cannot set category to Transfer on a non-transfer transaction")
+
+    # Block account changes on linked transactions (debt, receivable, transfer)
+    if data.account_id != txn.account_id and txn.reference:
+        if txn.reference.startswith(("debt:", "receivable:", "xfer:")):
+            raise ValueError("Cannot change account on a linked transaction")
 
     # Only block reference changes to reserved prefixes — allow preserving existing ones
     if data.reference:
-        if (data.reference.startswith("debt:") or data.reference.startswith("receivable:") or data.reference.startswith("xfer:")):
+        if data.reference.startswith(("debt:", "receivable:", "xfer:")):
             if txn.reference != data.reference:
                 raise ValueError("Invalid reference format")
+    else:
+        if txn.reference and txn.reference.startswith(("debt:", "receivable:", "xfer:")):
+            raise ValueError("Cannot clear reference on a linked transaction")
 
     old_account = txn.account
     old_type = txn.type

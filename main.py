@@ -11,6 +11,7 @@ Blueprints are registered manually after app creation (no __init__ package).
 
 import os
 import shutil
+import traceback
 from datetime import date, datetime, timezone
 
 from flask import Flask, g, redirect, render_template, request, send_file
@@ -65,6 +66,7 @@ def create_tables():
         for col in ["new_receivables", "received_receivables", "capital", "capital_delta"]:
             if col not in cols:
                 conn.execute(text(f"ALTER TABLE daily_profit_log ADD COLUMN {col} FLOAT DEFAULT 0"))
+                conn.execute(text(f"UPDATE daily_profit_log SET {col} = 0 WHERE {col} IS NULL"))
 
         result = conn.execute(text("PRAGMA table_info(debts)"))
         cols = [r[1] for r in result]
@@ -81,8 +83,14 @@ def seed_data():
 
 restore_db()
 create_tables()
-backup_db()
-seed_data()
+try:
+    backup_db()
+except Exception as e:
+    print(f"Backup failed: {e}")
+try:
+    seed_data()
+except Exception as e:
+    print(f"Seed failed: {e}")
 
 app = Flask(__name__)
 
@@ -145,7 +153,7 @@ def update_capital():
         value = "0"
     crud.set_setting(db, "fixed_capital", value)
     try: crud.backfill_daily_profit_logs(db)
-    except Exception as e: print(f"backfill error: {e}")
+    except Exception: traceback.print_exc()
     return redirect("/", 303)
 
 

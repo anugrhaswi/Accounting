@@ -99,9 +99,11 @@
                     {% if r.status == "unreceived" %}
                     <a href="/receivables/{{ r.id }}/receive" class="btn btn-sm btn-success">Receive</a>
                     {% endif %}
-                    <form action="/receivables/{{ r.id }}/delete" method="post" style="display:inline" onsubmit="return confirm('Delete this receivable?')">
+                     {% if r.status != "received" %}
+                     <form action="/receivables/{{ r.id }}/delete" method="post" style="display:inline" onsubmit="return confirm('Delete this receivable?')">
                         <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
                     </form>
+                    {% endif %}
                 </td>
             </tr>
             {% endfor %}

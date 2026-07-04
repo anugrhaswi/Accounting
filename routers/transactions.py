@@ -4,6 +4,8 @@ Transfer transactions (category = "Transfer") are created via the dedicated
 /transactions/transfer endpoint and cannot be directly created or edited.
 """
 
+import math
+import traceback
 from urllib.parse import quote
 
 from flask import Blueprint, redirect, render_template, request
@@ -38,6 +40,8 @@ def create_transaction():
     try:
         account_id = int(form["account_id"])
         amount = float(form["amount"])
+        if not math.isfinite(amount) or amount <= 0:
+            raise ValueError
     except (ValueError, TypeError):
         accounts = crud.get_accounts(db)
         income_categories = crud.get_categories(db, cat_type="income")
@@ -69,7 +73,7 @@ def create_transaction():
         expense_categories = crud.get_categories(db, cat_type="expense")
         return render_template("transaction_form.html", accounts=accounts, income_categories=income_categories, expense_categories=expense_categories, error="Invalid input. Please check the form values."), 400
     try: crud.backfill_daily_profit_logs(db)
-    except Exception as e: print(f"backfill error: {e}")
+    except Exception: traceback.print_exc()
     return redirect("/", 303)
 
 
@@ -93,6 +97,8 @@ def transfer_money():
         from_account_id = int(form["from_account_id"])
         to_account_id = int(form["to_account_id"])
         amount = float(form["amount"])
+        if not math.isfinite(amount) or amount <= 0:
+            raise ValueError
     except (ValueError, TypeError):
         accounts = crud.get_accounts(db)
         return render_template("transfer_form.html", accounts=accounts, error="Invalid numeric value. Check the amount and account fields."), 400
@@ -108,7 +114,7 @@ def transfer_money():
         accounts = crud.get_accounts(db)
         return render_template("transfer_form.html", accounts=accounts, error=str(e)), 400
     try: crud.backfill_daily_profit_logs(db)
-    except Exception as e: print(f"backfill error: {e}")
+    except Exception: traceback.print_exc()
     return redirect("/", 303)
 
 
@@ -140,6 +146,8 @@ def edit_transaction(transaction_id):
     try:
         account_id = int(form["account_id"])
         amount = float(form["amount"])
+        if not math.isfinite(amount) or amount <= 0:
+            raise ValueError
     except (ValueError, TypeError):
         accounts = crud.get_accounts(db)
         income_categories = crud.get_categories(db, cat_type="income")
@@ -195,7 +203,7 @@ def edit_transaction(transaction_id):
                                expense_categories=expense_categories, txn=txn,
                                error="Invalid input. Please check the form values."), 400
     try: crud.backfill_daily_profit_logs(db)
-    except Exception as e: print(f"backfill error: {e}")
+    except Exception: traceback.print_exc()
     return redirect("/logs", 303)
 
 
@@ -212,5 +220,5 @@ def delete_transaction(transaction_id):
     except ValueError as e:
         return redirect(f"/logs?error={quote(str(e))}", 303)
     try: crud.backfill_daily_profit_logs(db)
-    except Exception as e: print(f"backfill error: {e}")
+    except Exception: traceback.print_exc()
     return redirect("/logs", 303)
