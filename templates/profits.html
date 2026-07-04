@@ -1,8 +1,8 @@
-<!-- Rendered by profits_page() at /reports/profits. Expects: logs (list of dicts with date, income, expenses, new_receivables, received_receivables, capital, capital_delta, profit, running). -->
+{# Rendered by profits_page() at /reports/profits. Expects: logs (list of dicts with date, profit, running). #}
 {% extends "base.html" %}
 {% block content %}
 <h2>Daily Profit Log</h2>
-<p class="text-muted">Profit = Income − Expenses (receivable/capital changes shown for reference)</p>
+<p class="text-muted">Manually logged daily profit entries.</p>
 
 {% if logs %}
 <div class="table-responsive">
@@ -10,28 +10,14 @@
         <thead class="table-dark">
             <tr>
                 <th>Date</th>
-                <th>Income</th>
-                <th>Expenses</th>
-                <th>New Recv</th>
-                <th>Recv Recv'd</th>
-                <th>Capital</th>
-                <th>Cap Δ</th>
                 <th>Profit</th>
-                <th>Running</th>
+                <th>Running Total</th>
             </tr>
         </thead>
         <tbody>
             {% for entry in logs %}
             <tr>
                 <td>{{ entry.date }}</td>
-                <td>&#x20B9;{{ "%.2f"|format(entry.income) }}</td>
-                <td>&#x20B9;{{ "%.2f"|format(entry.expenses) }}</td>
-                <td>&#x20B9;{{ "%.2f"|format(entry.new_receivables) }}</td>
-                <td>&#x20B9;{{ "%.2f"|format(entry.received_receivables) }}</td>
-                <td>&#x20B9;{{ "%.2f"|format(entry.capital) }}</td>
-                <td class="{% if entry.capital_delta >= 0 %}text-success{% else %}text-danger{% endif %}">
-                    &#x20B9;{{ "%.2f"|format(entry.capital_delta) }}
-                </td>
                 <td class="{% if entry.profit >= 0 %}text-success{% else %}text-danger{% endif %} fw-bold">
                     &#x20B9;{{ "%.2f"|format(entry.profit) }}
                 </td>
@@ -42,6 +28,6 @@
     </table>
 </div>
 {% else %}
-<div class="alert alert-info">No profit logs yet. Data will appear after transactions are recorded.</div>
+<div class="alert alert-info">No profit logs yet. Use the dashboard to log daily profit.</div>
 {% endif %}
 {% endblock %}

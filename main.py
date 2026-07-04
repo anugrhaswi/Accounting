@@ -11,7 +11,6 @@ Blueprints are registered manually after app creation (no __init__ package).
 
 import os
 import shutil
-import traceback
 from datetime import date, datetime, timezone
 
 from flask import Flask, g, redirect, render_template, request, send_file
@@ -152,8 +151,32 @@ def update_capital():
     except (ValueError, TypeError):
         value = "0"
     crud.set_setting(db, "fixed_capital", value)
-    try: crud.backfill_daily_profit_logs(db)
-    except Exception: traceback.print_exc()
+    return redirect("/", 303)
+
+
+@app.context_processor
+def inject_today():
+    """Make today's date available in all templates."""
+    return {"today": datetime.now(timezone.utc)}
+
+
+@app.route("/daily-profit/log", methods=["POST"])
+def log_daily_profit():
+    """Manually log today's profit. Accepts date (defaults to today) and profit amount."""
+    db = get_db()
+    try:
+        profit = float(request.form.get("profit", 0))
+    except (ValueError, TypeError):
+        return redirect("/?error=Invalid profit value", 303)
+    date_str = request.form.get("date", "")
+    try:
+        if date_str:
+            log_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+        else:
+            log_date = datetime.now(timezone.utc).date()
+    except (ValueError, TypeError):
+        return redirect("/?error=Invalid date format", 303)
+    crud.log_daily_profit(db, log_date, profit)
     return redirect("/", 303)
 
 

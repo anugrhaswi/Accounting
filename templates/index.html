@@ -80,6 +80,14 @@
                 <p class="card-text fs-4">Inc: &#x20B9;{{ "%.2f"|format(summary.total_income) }}</p>
                 <p class="card-text fs-4">Exp: &#x20B9;{{ "%.2f"|format(summary.total_expenses) }}</p>
                 <p class="card-text fs-4 fw-bold">Profit: &#x20B9;{{ "%.2f"|format(summary.profit) }}</p>
+                <button type="button" class="btn btn-sm btn-outline-light" data-bs-toggle="collapse" data-bs-target="#profitLogForm">Log Profit</button>
+                <div class="collapse mt-2" id="profitLogForm">
+                    <form method="post" action="/daily-profit/log" class="d-flex flex-column gap-1">
+                        <input type="date" name="date" class="form-control form-control-sm" value="{{ today.strftime('%Y-%m-%d') }}">
+                        <input type="number" name="profit" class="form-control form-control-sm" step="0.01" placeholder="Profit amount" required>
+                        <button type="submit" class="btn btn-sm btn-light">Save</button>
+                    </form>
+                </div>
             </div>
         </div>
     </div>

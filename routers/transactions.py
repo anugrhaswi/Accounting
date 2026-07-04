@@ -5,7 +5,6 @@ Transfer transactions (category = "Transfer") are created via the dedicated
 """
 
 import math
-import traceback
 from urllib.parse import quote
 
 from flask import Blueprint, redirect, render_template, request
@@ -72,8 +71,6 @@ def create_transaction():
         income_categories = crud.get_categories(db, cat_type="income")
         expense_categories = crud.get_categories(db, cat_type="expense")
         return render_template("transaction_form.html", accounts=accounts, income_categories=income_categories, expense_categories=expense_categories, error="Invalid input. Please check the form values."), 400
-    try: crud.backfill_daily_profit_logs(db)
-    except Exception: traceback.print_exc()
     return redirect("/", 303)
 
 
@@ -113,8 +110,6 @@ def transfer_money():
     except (ValueError, KeyError) as e:
         accounts = crud.get_accounts(db)
         return render_template("transfer_form.html", accounts=accounts, error=str(e)), 400
-    try: crud.backfill_daily_profit_logs(db)
-    except Exception: traceback.print_exc()
     return redirect("/", 303)
 
 
@@ -202,8 +197,6 @@ def edit_transaction(transaction_id):
                                income_categories=income_categories,
                                expense_categories=expense_categories, txn=txn,
                                error="Invalid input. Please check the form values."), 400
-    try: crud.backfill_daily_profit_logs(db)
-    except Exception: traceback.print_exc()
     return redirect("/logs", 303)
 
 
@@ -219,6 +212,4 @@ def delete_transaction(transaction_id):
         crud.delete_transaction(db, transaction_id)
     except ValueError as e:
         return redirect(f"/logs?error={quote(str(e))}", 303)
-    try: crud.backfill_daily_profit_logs(db)
-    except Exception: traceback.print_exc()
     return redirect("/logs", 303)

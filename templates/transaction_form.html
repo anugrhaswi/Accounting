@@ -58,11 +58,11 @@
     </div>
     <div class="col-md-6">
         <label class="form-label">Description (optional)</label>
-        <input type="text" name="description" class="form-control" placeholder="What is this for?" value="{{ txn.description or '' }}">
+        <input type="text" name="description" class="form-control" placeholder="What is this for?" value="{{ txn.description if txn else '' }}">
     </div>
     <div class="col-md-4">
         <label class="form-label">Reference (optional)</label>
-        <input type="text" name="reference" class="form-control" placeholder="Bill/UTR/Invoice no." value="{{ txn.reference or '' }}">
+        <input type="text" name="reference" class="form-control" placeholder="Bill/UTR/Invoice no." value="{{ txn.reference if txn else '' }}">
     </div>
     <div class="col-12">
         <button type="submit" class="btn btn-primary">{% if txn %}Update Transaction{% else %}Save Transaction{% endif %}</button>

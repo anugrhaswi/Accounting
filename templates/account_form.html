@@ -13,7 +13,7 @@
     </div>
     <div class="col-md-8">
         <label class="form-label">Description (optional)</label>
-        <input type="text" name="description" class="form-control" placeholder="Any notes" value="{{ account.description or '' }}">
+        <input type="text" name="description" class="form-control" placeholder="Any notes" value="{{ account.description if account else '' }}">
     </div>
     <div class="col-12">
         <button type="submit" class="btn btn-primary">{% if account %}Save Changes{% else %}Create Account{% endif %}</button>

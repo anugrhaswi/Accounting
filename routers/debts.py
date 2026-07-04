@@ -4,7 +4,6 @@ Debt lifecycle: create (unpaid) → receive loan into an account → settle from
 """
 
 import math
-import traceback
 from urllib.parse import quote
 
 from flask import Blueprint, redirect, render_template, request
@@ -106,8 +105,6 @@ def receive_loan(debt_id):
         except ValueError:
             return redirect("/debts/", 303)
         return render_template("debt_receive.html", debt=debt, accounts=accounts, error=str(e)), 400
-    try: crud.backfill_daily_profit_logs(db)
-    except Exception: traceback.print_exc()
     return redirect("/debts/", 303)
 
 
@@ -147,8 +144,6 @@ def settle_debt(debt_id):
         except ValueError:
             return redirect("/debts/", 303)
         return render_template("debt_settle.html", debt=debt, accounts=accounts, error=str(e)), 400
-    try: crud.backfill_daily_profit_logs(db)
-    except Exception: traceback.print_exc()
     return redirect("/debts/", 303)
 
 

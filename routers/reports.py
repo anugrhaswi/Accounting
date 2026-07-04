@@ -73,12 +73,6 @@ def profits_page():
         running += entry.profit
         logs_with_running.append({
             "date": entry.date.isoformat(),
-            "income": entry.income,
-            "expenses": entry.expenses,
-            "new_receivables": entry.new_receivables,
-            "received_receivables": entry.received_receivables,
-            "capital": entry.capital,
-            "capital_delta": entry.capital_delta,
             "profit": entry.profit,
             "running": running,
         })

@@ -373,82 +373,24 @@ def get_daily_summary(db: Session, date: datetime = None):
     }
 
 
-def update_daily_profit_log(db: Session, date: datetime):
-    """Create or update the daily profit log entry for a given date.
-
-    Computes income, expenses, new/received receivables, and capital delta.
-    Only creates an entry if there is at least one non-zero value.
-    """
-    day_start = date.replace(hour=0, minute=0, second=0, microsecond=0)
-    day_end = day_start + timedelta(days=1)
-
-    income = db.execute(
-        select(func.coalesce(func.sum(models.Transaction.amount), 0))
-        .where(models.Transaction.timestamp >= day_start)
-        .where(models.Transaction.timestamp < day_end)
-        .where(models.Transaction.type.in_(["credit"]))
-        .where(models.Transaction.category != "Transfer")
-    ).scalar()
-
-    expenses = db.execute(
-        select(func.coalesce(func.sum(models.Transaction.amount), 0))
-        .where(models.Transaction.timestamp >= day_start)
-        .where(models.Transaction.timestamp < day_end)
-        .where(models.Transaction.type.in_(["debit"]))
-        .where(models.Transaction.category != "Transfer")
-    ).scalar()
-
-    new_receivables = db.execute(
-        select(func.coalesce(func.sum(models.Receivable.amount), 0))
-        .where(models.Receivable.created_at >= day_start)
-        .where(models.Receivable.created_at < day_end)
-    ).scalar()
-
-    received_receivables = db.execute(
-        select(func.coalesce(func.sum(models.Receivable.amount), 0))
-        .where(models.Receivable.received_at >= day_start)
-        .where(models.Receivable.received_at < day_end)
-        .where(models.Receivable.status == "received")
-    ).scalar()
-
-    try:
-        today_capital = float(get_setting(db, "fixed_capital", "0"))
-    except (ValueError, TypeError):
-        today_capital = 0.0
-
-    # Compute capital delta vs the most recent previous entry
-    day_key = day_start.date()
-    yesterday_entry = db.execute(
-        select(models.DailyProfitLog)
-        .where(models.DailyProfitLog.date < day_key)
-        .order_by(models.DailyProfitLog.date.desc())
-        .limit(1)
+def log_daily_profit(db: Session, log_date: date, profit: float):
+    """Create or update a daily profit log entry with a manually entered profit value."""
+    entry = db.execute(
+        select(models.DailyProfitLog).where(models.DailyProfitLog.date == log_date)
     ).scalar_one_or_none()
-    yesterday_capital = yesterday_entry.capital if yesterday_entry else today_capital
-    capital_delta = today_capital - yesterday_capital
-
-    profit = income - expenses
-
-    existing = db.execute(
-        select(models.DailyProfitLog).where(models.DailyProfitLog.date == day_key)
-    ).scalar_one_or_none()
-
-    if existing:
-        existing.income = income
-        existing.expenses = expenses
-        existing.new_receivables = new_receivables
-        existing.received_receivables = received_receivables
-        existing.capital = today_capital
-        existing.capital_delta = capital_delta
-        existing.profit = profit
-        existing.updated_at = datetime.now(timezone.utc)
-    elif income or expenses or new_receivables or received_receivables or capital_delta:
-        db.add(models.DailyProfitLog(
-            date=day_key, income=income, expenses=expenses,
-            new_receivables=new_receivables, received_receivables=received_receivables,
-            capital=today_capital, capital_delta=capital_delta, profit=profit,
-        ))
+    if entry:
+        entry.profit = profit
+        entry.updated_at = datetime.now(timezone.utc)
+    else:
+        entry = models.DailyProfitLog(
+            date=log_date, profit=profit,
+            income=0, expenses=0,
+            new_receivables=0, received_receivables=0,
+            capital=0, capital_delta=0,
+        )
+        db.add(entry)
     db.flush()
+    return entry
 
 
 def get_daily_profit_logs(db: Session, limit: int = 365):
@@ -461,28 +403,7 @@ def get_daily_profit_logs(db: Session, limit: int = 365):
     return result.scalars().all()
 
 
-def backfill_daily_profit_logs(db: Session):
-    """Fill or update daily profit log entries from the first transaction date to today.
 
-    Always recalculates from the first transaction to today so that historical
-    edits/deletions are reflected. Iterates day by day calling update_daily_profit_log.
-    """
-    today = datetime.now(timezone).replace(hour=0, minute=0, second=0, microsecond=0)
-
-    first_txn = db.execute(
-        select(func.date(func.min(models.Transaction.timestamp)))
-    ).scalar()
-    if not first_txn:
-        return
-    if isinstance(first_txn, date):
-        cursor = datetime.combine(first_txn, datetime.min.time()).replace(tzinfo=timezone.utc)
-    else:
-        cursor = datetime.strptime(first_txn, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-
-    while cursor <= today:
-        update_daily_profit_log(db, cursor)
-        cursor += timedelta(days=1)
-    db.flush()
 
 
 def get_min_transaction_year(db: Session):

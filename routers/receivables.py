@@ -4,7 +4,6 @@ Receivable lifecycle: create (unreceived) → receive payment into an account (r
 """
 
 import math
-import traceback
 from urllib.parse import quote
 
 from flask import Blueprint, redirect, render_template, request
@@ -112,8 +111,6 @@ def receive_receivable(recv_id):
             return redirect("/receivables/", 303)
         return render_template("receivable_receive.html", recv=recv,
                                accounts=accounts, error=str(e)), 400
-    try: crud.backfill_daily_profit_logs(db)
-    except Exception: traceback.print_exc()
     return redirect("/receivables/", 303)
 
 
