@@ -1,4 +1,4 @@
-<!-- Rendered by dashboard() at @app.route("/"). Expects: accounts, recent_transactions, summary, total_balance, fixed_capital, profit, outstanding_debt, outstanding_receivable, net_worth, error. -->
+<!-- Rendered by dashboard() at @app.route("/"). Expects: accounts, recent_transactions, total_balance, fixed_capital, profit, outstanding_debt, outstanding_receivable, net_worth, error. -->
 {% extends "base.html" %}
 {% block content %}
 <h2>Dashboard</h2>
@@ -41,46 +41,7 @@
                 <h5 class="card-title">Profit</h5>
                 <p class="card-text fs-3">&#x20B9;{{ "%.2f"|format(profit) }}</p>
                 <small>Balance &minus; Capital</small>
-            </div>
-        </div>
-    </div>
-</div>
-<div class="row mb-4">
-    <div class="col-md-3 mb-2">
-        <div class="card text-bg-danger h-100">
-            <div class="card-body">
-                <h5 class="card-title">Outstanding Debt</h5>
-                <p class="card-text fs-3">&#x20B9;{{ "%.2f"|format(outstanding_debt) }}</p>
-                <small>Money you owe</small>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3 mb-2">
-        <div class="card text-bg-warning h-100">
-            <div class="card-body">
-                <h5 class="card-title">Outstanding Receivable</h5>
-                <p class="card-text fs-3">&#x20B9;{{ "%.2f"|format(outstanding_receivable) }}</p>
-                <small>Money owed to you</small>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3 mb-2">
-        <div class="card h-100 {% if net_worth > 0 %}text-bg-success{% elif net_worth < 0 %}text-bg-danger{% else %}text-bg-secondary{% endif %}">
-            <div class="card-body">
-                <h5 class="card-title">Net Worth</h5>
-                <p class="card-text fs-3">&#x20B9;{{ "%.2f"|format(net_worth) }}</p>
-                <small>Balance + Receivable &minus; Debt</small>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3 mb-2">
-        <div class="card text-bg-primary h-100">
-            <div class="card-body">
-                <h5 class="card-title">Today's P&L</h5>
-                <p class="card-text fs-4">Inc: &#x20B9;{{ "%.2f"|format(summary.total_income) }}</p>
-                <p class="card-text fs-4">Exp: &#x20B9;{{ "%.2f"|format(summary.total_expenses) }}</p>
-                <p class="card-text fs-4 fw-bold">Profit: &#x20B9;{{ "%.2f"|format(summary.profit) }}</p>
-                <button type="button" class="btn btn-sm btn-outline-light" data-bs-toggle="collapse" data-bs-target="#profitLogForm">Log Profit</button>
+                <button type="button" class="btn btn-sm btn-outline-light ms-2" data-bs-toggle="collapse" data-bs-target="#profitLogForm">Log Profit</button>
                 <div class="collapse mt-2" id="profitLogForm">
                     <form method="post" action="/daily-profit/log" class="d-flex flex-column gap-1">
                         <input type="date" name="date" class="form-control form-control-sm" value="{{ today.strftime('%Y-%m-%d') }}">
@@ -92,43 +53,31 @@
         </div>
     </div>
 </div>
-
 <div class="row mb-4">
-    <div class="col-md-6 mb-2">
-        <div class="card h-100">
-            <div class="card-header">Today's Income by Category</div>
+    <div class="col-md-4 mb-2">
+        <div class="card text-bg-danger h-100">
             <div class="card-body">
-                {% if summary.income_by_category %}
-                <table class="table table-sm table-borderless mb-0">
-                    {% for cat, amount in summary.income_by_category.items() %}
-                    <tr>
-                        <td>{{ cat }}</td>
-                        <td class="text-end">&#x20B9;{{ "%.2f"|format(amount) }}</td>
-                    </tr>
-                    {% endfor %}
-                </table>
-                {% else %}
-                <p class="text-muted mb-0">No income today.</p>
-                {% endif %}
+                <h5 class="card-title">Outstanding Debt</h5>
+                <p class="card-text fs-3">&#x20B9;{{ "%.2f"|format(outstanding_debt) }}</p>
+                <small>Money you owe</small>
             </div>
         </div>
     </div>
-    <div class="col-md-6 mb-2">
-        <div class="card h-100">
-            <div class="card-header">Today's Expenses by Category</div>
+    <div class="col-md-4 mb-2">
+        <div class="card text-bg-warning h-100">
             <div class="card-body">
-                {% if summary.expense_by_category %}
-                <table class="table table-sm table-borderless mb-0">
-                    {% for cat, amount in summary.expense_by_category.items() %}
-                    <tr>
-                        <td>{{ cat }}</td>
-                        <td class="text-end">&#x20B9;{{ "%.2f"|format(amount) }}</td>
-                    </tr>
-                    {% endfor %}
-                </table>
-                {% else %}
-                <p class="text-muted mb-0">No expenses today.</p>
-                {% endif %}
+                <h5 class="card-title">Outstanding Receivable</h5>
+                <p class="card-text fs-3">&#x20B9;{{ "%.2f"|format(outstanding_receivable) }}</p>
+                <small>Money owed to you</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4 mb-2">
+        <div class="card h-100 {% if net_worth > 0 %}text-bg-success{% elif net_worth < 0 %}text-bg-danger{% else %}text-bg-secondary{% endif %}">
+            <div class="card-body">
+                <h5 class="card-title">Net Worth</h5>
+                <p class="card-text fs-3">&#x20B9;{{ "%.2f"|format(net_worth) }}</p>
+                <small>Balance + Receivable &minus; Debt</small>
             </div>
         </div>
     </div>

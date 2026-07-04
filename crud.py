@@ -318,61 +318,6 @@ def seed_default_categories(db: Session):
     db.flush()
 
 
-def get_daily_summary(db: Session, date: datetime = None):
-    """Return today's income, expenses, profit, and per-category breakdown.
-
-    Excludes Transfer transactions. Uses credit for income and debit for expenses.
-    """
-    if date is None:
-        date = datetime.now(timezone.utc)
-    day_start = date.replace(hour=0, minute=0, second=0, microsecond=0)
-    day_end = day_start + timedelta(days=1)
-
-    income = db.execute(
-        select(func.coalesce(func.sum(models.Transaction.amount), 0))
-        .where(models.Transaction.timestamp >= day_start)
-        .where(models.Transaction.timestamp < day_end)
-        .where(models.Transaction.type.in_(["credit"]))
-        .where(models.Transaction.category != "Transfer")
-    )
-    total_income = income.scalar()
-
-    expenses = db.execute(
-        select(func.coalesce(func.sum(models.Transaction.amount), 0))
-        .where(models.Transaction.timestamp >= day_start)
-        .where(models.Transaction.timestamp < day_end)
-        .where(models.Transaction.type.in_(["debit"]))
-        .where(models.Transaction.category != "Transfer")
-    )
-    total_expenses = expenses.scalar()
-
-    income_by_cat = db.execute(
-        select(models.Transaction.category, func.sum(models.Transaction.amount))
-        .where(models.Transaction.timestamp >= day_start)
-        .where(models.Transaction.timestamp < day_end)
-        .where(models.Transaction.type.in_(["credit"]))
-        .where(models.Transaction.category != "Transfer")
-        .group_by(models.Transaction.category)
-    )
-
-    expense_by_cat = db.execute(
-        select(models.Transaction.category, func.sum(models.Transaction.amount))
-        .where(models.Transaction.timestamp >= day_start)
-        .where(models.Transaction.timestamp < day_end)
-        .where(models.Transaction.type.in_(["debit"]))
-        .where(models.Transaction.category != "Transfer")
-        .group_by(models.Transaction.category)
-    )
-
-    return {
-        "total_income": total_income,
-        "total_expenses": total_expenses,
-        "profit": total_income - total_expenses,
-        "income_by_category": {r[0] or "General": r[1] for r in income_by_cat},
-        "expense_by_category": {r[0] or "General": r[1] for r in expense_by_cat},
-    }
-
-
 def log_daily_profit(db: Session, log_date: date, profit: float):
     """Create or update a daily profit log entry with a manually entered profit value."""
     entry = db.execute(

@@ -128,7 +128,6 @@ def dashboard():
     error = request.args.get("error")
     accounts_list = crud.get_accounts(db)
     recent_transactions = crud.get_transactions(db, limit=10)
-    summary = crud.get_daily_summary(db)
     total_balance = crud.get_total_balance(db)
     try:
         fixed_capital = float(crud.get_setting(db, "fixed_capital", "0"))
@@ -138,7 +137,7 @@ def dashboard():
     outstanding_debt = crud.get_total_outstanding_debt(db)
     outstanding_receivable = crud.get_total_outstanding_receivable(db)
     net_worth = total_balance + outstanding_receivable - outstanding_debt
-    return render_template("index.html", accounts=accounts_list, recent_transactions=recent_transactions, summary=summary, total_balance=total_balance, fixed_capital=fixed_capital, profit=profit, outstanding_debt=outstanding_debt, outstanding_receivable=outstanding_receivable, net_worth=net_worth, error=error)
+    return render_template("index.html", accounts=accounts_list, recent_transactions=recent_transactions, total_balance=total_balance, fixed_capital=fixed_capital, profit=profit, outstanding_debt=outstanding_debt, outstanding_receivable=outstanding_receivable, net_worth=net_worth, error=error)
 
 
 @app.route("/settings/capital", methods=["POST"])
